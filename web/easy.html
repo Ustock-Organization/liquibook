@@ -1,6 +1,6 @@
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
   <head>
     <meta charset="utf-8">
     <title>Liquibook</title>
@@ -44,11 +44,11 @@
           <a class="brand" href="index.html">Liquibook</a>
           <div class="nav-collapse collapse">
             <ul class="nav">
-              <li><a href="index.html">Home</a></li>
-              <li><a href="fast.html">Fast</a></li>
-              <li><a href="flexible.html">Flexible</a></li>
-              <li class="active"><a href="easy.html">Easy</a></li>
-              <li><a href="get-started.html">Get Started</a></li>
+              <li><a href="index.html">홈</a></li>
+              <li><a href="fast.html">빠름</a></li>
+              <li><a href="flexible.html">유연함</a></li>
+              <li class="active"><a href="easy.html">쉬움</a></li>
+              <li><a href="get-started.html">시작하기</a></li>
             </ul>
           </div><!--/.nav-collapse -->
         </div>
@@ -57,34 +57,34 @@
 
     <div class="container">
 
-      <h1>Liquibook is Easy.  <span class="highlight">Kindergarten Easy</span></h1>
-      <p>To be usable, Liquibook must be easy to integrate.  You need to:</p>
+      <h1>Liquibook은 쉽습니다.  <span class="highlight">유치원생도 할 수 있을 만큼 쉽습니다</span></h1>
+      <p>사용 가능하려면 Liquibook은 통합하기 쉬워야 합니다. 여러분은 다음을 수행해야 합니다:</p>
 
       <ul>
-        <li>Create a class that implements the Order Interface</li>
-        <li>Instantiate OrderBook and use interface</li>
-        <li>Handle callbacks by overriding OrderBook::perform_callback()</li>
-        <li>Either call OrderBook::perform_callbacks() in the calling thread, or signal a background thread to do it. </li>
+        <li>Order Interface를 구현하는 클래스 생성</li>
+        <li>OrderBook 인스턴스화 및 인터페이스 사용</li>
+        <li>OrderBook::perform_callback()을 오버라이딩하여 콜백 처리</li>
+        <li>호출 스레드에서 OrderBook::perform_callbacks()를 호출하거나 백그라운드 스레드에 신호를 보내 수행</li>
       </ul>
 
-      <h2>How do I...?</h2>
+      <h2>어떻게 하나요...?</h2>
 
       <ul>
-        <li>Use my Order class - Just bind your <i>pointer to order</i> type to the OrderBook template.</li>
+        <li>내 Order 클래스 사용 - <i>주문 포인터</i> 타입을 OrderBook 템플릿에 바인딩하기만 하면 됩니다.</li>
         <pre>class MyOrderBook : public OrderBook&lt;MyOrder*&gt; { ... }</pre>
-        <li>Use shared pointers - just pass a shared pointer type as the OrderBook template argument.</li>
+        <li>공유 포인터 사용 - 공유 포인터 타입을 OrderBook 템플릿 인자로 전달하기만 하면 됩니다.</li>
         <pre>typedef boost::shared_ptr<SimpleOrder> MyOrderPtr;
 class MyOrderBook : public OrderBook&lt;MyOrderPtr&gt; { ... }</pre>
-        <li>Track aggregate depth levels - instantiate Depth in your child OrderBook, and manipulate it in the callback handling, like impl::SimpleOrderBook does.</li>
+        <li>집계 깊이 레벨 추적 - 자식 OrderBook에서 Depth를 인스턴스화하고, impl::SimpleOrderBook처럼 콜백 처리에서 조작합니다.</li>
         <pre>depth_.add_order(...);
 depth_.fill_order(...);
 depth_.close_order(...);
 depth_.replace_order(...);
 depth_.ignore_fill_qty(...);
 </pre>
-        <li>Track more than 5 depth levels - Just instantiate Depth with the number you want.</li>
+        <li>5단계 이상의 깊이 레벨 추적 - 원하는 숫자로 Depth를 인스턴스화하기만 하면 됩니다.</li>
         <pre>typedef book::Depth<10> MyDepth</pre>
-        <li>Track BBO only - Just instantiate Depth with one level.</li>
+        <li>BBO만 추적 - 한 레벨로 Depth를 인스턴스화하기만 하면 됩니다.</li>
         <pre>typedef book::Depth<10> MyBBO</pre>
         <li></li>
         <li></li>
@@ -98,6 +98,6 @@ depth_.ignore_fill_qty(...);
     ================================================== -->
     <!-- Placed at the end of the document so the pages load faster -->
     <script src="js/jquery-1.9.1.min.js"></script>
-    <scriprt src="js/bootstrap.min.js"></script>
+    <script src="js/bootstrap.min.js"></script>
   </body>
 </html>

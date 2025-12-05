@@ -1,6 +1,6 @@
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
   <head>
     <meta charset="utf-8">
     <title>Liquibook</title>
@@ -44,11 +44,11 @@
           <a class="brand" href="index.html">Liquibook</a>
           <div class="nav-collapse collapse">
             <ul class="nav">
-              <li><a href="index.html">Home</a></li>
-              <li><a href="fast.html">Fast</a></li>
-              <li class="active"><a href="flexible.html">Flexible</a></li>
-              <li><a href="easy.html">Easy</a></li>
-              <li><a href="get-started.html">Get Started</a></li>
+              <li><a href="index.html">홈</a></li>
+              <li><a href="fast.html">빠름</a></li>
+              <li class="active"><a href="flexible.html">유연함</a></li>
+              <li><a href="easy.html">쉬움</a></li>
+              <li><a href="get-started.html">시작하기</a></li>
             </ul>
           </div><!--/.nav-collapse -->
         </div>
@@ -57,34 +57,34 @@
 
     <div class="container">
 
-      <h1>Liquibook is flexible.  <span class="highlight">Acrobat Flexible</span></h1>
-      <p>Liquibook is desingned to meet a wide array of use cases.</p>
-      <p>This means you get to choose:</p>
+      <h1>Liquibook은 유연합니다.  <span class="highlight">곡예사처럼 유연합니다</span></h1>
+      <p>Liquibook은 다양한 사용 사례를 충족하도록 설계되었습니다.</p>
+      <p>이는 여러분이 다음을 선택할 수 있음을 의미합니다:</p>
 
       <ul>
-        <li>Your Order class</li>
-        <li>Your pointer preference (smart or standard)</li>
-        <li>Your threading model</li>
-        <li>Your identifiers</li>
-        <li>Your downstream handling</li>
-        <li>Your add-ons</li>
+        <li>주문 클래스</li>
+        <li>포인터 선호도 (스마트 또는 표준)</li>
+        <li>스레딩 모델</li>
+        <li>식별자</li>
+        <li>다운스트림 처리</li>
+        <li>애드온</li>
       </ul>
 
-      <h2>How is it so Flexible?</h2>
+      <h2>어떻게 그렇게 유연한가요?</h2>
 
-      <p>Your Order class is used, it must only implement a trivial interface.  If you don't have one, a sample one is included.</p>
+      <p>여러분의 주문 클래스가 사용되며, 사소한 인터페이스만 구현하면 됩니다. 없는 경우 샘플이 포함되어 있습니다.</p>
 
-      <p>The OrderBook class is a template, which accepts a pointer type as a parameter.  You can use any pointer type which dereferences using the -&gt; operator.</p>
+      <p>OrderBook 클래스는 템플릿으로, 포인터 타입을 매개변수로 받습니다. -> 연산자를 사용하여 역참조하는 모든 포인터 타입을 사용할 수 있습니다.</p>
 
-      <p>Liquibook is not an application, but a library, usable within your application.  As such, it has no synchronization, nor background threads.  You choose whether to have mutliple threads and how to synchronize them.</p>
+      <p>Liquibook은 애플리케이션이 아니라 라이브러리이며, 여러분의 애플리케이션 내에서 사용할 수 있습니다. 따라서 동기화나 백그라운드 스레드가 없습니다. 다중 스레드를 가질지, 어떻게 동기화할지는 여러분이 선택합니다.</p>
 
-      <p>Liquibook does not use order IDs, user IDs, account IDs, or symbols, just Order pointers.  Any mapping from order ID to pointer is done outside of Liquibook.</p>
+      <p>Liquibook은 주문 ID, 사용자 ID, 계정 ID, 또는 심볼을 사용하지 않고 오직 Order 포인터만 사용합니다. 주문 ID에서 포인터로의 매핑은 Liquibook 외부에서 수행됩니다.</p>
 
-      <p>Liquibook further assumes all orders given to an order book are for the order book's symbol, and mapping from symbol to order book is  done outside of Liquibook.</p>
+      <p>Liquibook은 또한 주문 장부에 제공된 모든 주문이 해당 주문 장부의 심볼에 대한 것이라고 가정하며, 심볼에서 주문 장부로의 매핑은 Liquibook 외부에서 수행됩니다.</p>
 
-      <p>Liquibook does none of the downstream handling, such as feed publishing, resulting from a trade or a quote.  After all, that is feed-specific.  Instead, liquibook queues up callbacks, which you handle in your code.</p>
+      <p>Liquibook은 거래나 호가로 인한 피드 게시와 같은 다운스트림 처리를 수행하지 않습니다. 결국 그것은 피드별로 다릅니다. 대신 Liquibook은 콜백을 대기열에 넣고, 여러분이 코드에서 이를 처리합니다.</p>
 
-      <p>Liquibook includes optional add-on classes, for depth/BBO tracking, that can easily be integrated in the handling of callbacks.  For an example see SimpleOrderBook in the impl directory.</p>
+      <p>Liquibook은 깊이/BBO 추적을 위한 선택적 애드온 클래스를 포함하며, 이는 콜백 처리에서 쉽게 통합될 수 있습니다. 예제는 impl 디렉토리의 SimpleOrderBook을 참조하십시오.</p>
 
     </div> <!-- /container -->
 
@@ -95,4 +95,3 @@
     <script src="js/bootstrap.min.js"></script>
   </body>
 </html>
-

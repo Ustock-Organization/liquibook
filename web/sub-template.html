@@ -1,6 +1,6 @@
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
   <head>
     <meta charset="utf-8">
     <title>Liquibook</title>
@@ -44,11 +44,11 @@
           <a class="brand" href="index.html">Liquibook</a>
           <div class="nav-collapse collapse">
             <ul class="nav">
-              <li><a href="index.html">Home</a></li>
-              <li class="active"><a href="#">Fast</a></li>
-              <li><a href="flexible.html">Flexible</a></li>
-              <li><a href="easy.html">Easy</a></li>
-              <li><a href="get-started.html">Get Started</a></li>
+              <li><a href="index.html">홈</a></li>
+              <li class="active"><a href="#">빠름</a></li>
+              <li><a href="flexible.html">유연함</a></li>
+              <li><a href="easy.html">쉬움</a></li>
+              <li><a href="get-started.html">시작하기</a></li>
             </ul>
           </div><!--/.nav-collapse -->
         </div>
@@ -57,34 +57,34 @@
 
     <div class="container">
 
-      <h1>Liquibook is Fast</h1>
-      <p>Liquibook was designed to meet the needs of the most demanding customers.  This means:</p>
+      <h1>Liquibook은 빠릅니다</h1>
+      <p>Liquibook은 가장 까다로운 고객의 요구를 충족하도록 설계되었습니다. 이는 다음을 의미합니다:</p>
 
       <ul>
-        <li>Written in C++</li>
-        <li>No floating point comparisons</li>
-        <li>Minimal copying of data from your order objects</li>
+        <li>C++로 작성됨</li>
+        <li>부동 소수점 비교 없음</li>
+        <li>주문 객체로부터의 데이터 복사 최소화</li>
       </ul>
 
-      <h2>How Fast?</h2>
+      <h2>얼마나 빠른가요?</h2>
 
-      <p>The included performance tests show Liquibook handling <b>over 2 million</b> orders per second.</p>
+      <p>포함된 성능 테스트는 Liquibook이 초당 <b>200만 건 이상</b>의 주문을 처리함을 보여줍니다.</p>
 
-      <h2>What Does the Performance Test Actually Do?</h2>
+      <h2>성능 테스트는 실제로 무엇을 하나요?</h2>
 
-      <p>The included performance test allocates a number of orders, and then runs for a given duration, measuring the time to handle them.  If the orders run out before the test completes, the test is rerun with double the number of orders until an iteration completes.</p>
+      <p>포함된 성능 테스트는 다수의 주문을 할당한 다음, 주어진 시간 동안 실행하여 처리 시간을 측정합니다. 테스트가 완료되기 전에 주문이 소진되면, 반복이 완료될 때까지 주문 수를 두 배로 늘려 테스트를 다시 실행합니다.</p>
 
-      <p>When complete, it checks the number of orders processed before the end of the test, and reports that, as well as the number of resulting matches (trades).</p>
+      <p>완료되면 테스트 종료 전에 처리된 주문 수를 확인하고, 그 결과와 체결(거래) 수를 보고합니다.</p>
 
-      <p>The test runs against three different order books:</p>
+      <p>테스트는 세 가지 다른 주문 장부에 대해 실행됩니다:</p>
 
       <ul>
-        <li>Raw order book matching engine</li>
-        <li>Order book matching engine with BBO tracking</li>
-        <li>Order book matching engine with 5 levels of aggregation (market depth)</li>
+        <li>원시 주문 장부 매칭 엔진</li>
+        <li>BBO 추적 기능이 있는 주문 장부 매칭 엔진</li>
+        <li>5단계 집계(시장 깊이)가 있는 주문 장부 매칭 엔진</li>
       </ul>
 
-      <p>The quoted times is for the <b>slowest</b> of these, with 5 levels of aggregation.  You can see the performance history on <a href="https://github.com/objectcomputing/liquibook/blob/master/PERFORMANCE.md">GitHub</a>.</p>
+      <p>인용된 시간은 이 중 가장 느린 5단계 집계 방식에 대한 것입니다. <a href="https://github.com/objectcomputing/liquibook/blob/master/PERFORMANCE.md">GitHub</a>에서 성능 기록을 확인할 수 있습니다.</p>
 
     </div> <!-- /container -->
 
@@ -95,4 +95,3 @@
     <script src="js/bootstrap.min.js"></script>
   </body>
 </html>
-
