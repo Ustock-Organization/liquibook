@@ -1,0 +1,13 @@
+{
+  "name": "liquibook-aws-wrapper",
+  "version": "1.0.0",
+  "description": "C++ AWS wrapper for Liquibook matching engine",
+  "dependencies": [
+    "librdkafka",
+    "grpc",
+    "protobuf",
+    "nlohmann-json",
+    "hiredis",
+    "gtest"
+  ]
+}

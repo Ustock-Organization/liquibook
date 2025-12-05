@@ -18,11 +18,11 @@
 
 ## 1. 클라이언트 진입점 (Ingress Layer)
 
-| 컴포넌트 | AWS 서비스 / 기술 스택 | 역할 |
-|---|---|---|
-| **WebSocket Gateway** | Amazon API Gateway (WebSocket API) | 클라이언트 영구 연결 관리, 호가/체결 푸시 |
-| **REST API** | Amazon API Gateway (HTTP API) 또는 ALB | 주문 제출 REST 엔드포인트 |
-| **인증** | Amazon Cognito 또는 자체 JWT | 사용자 인증 및 토큰 검증 |
+| 컴포넌트                  | AWS 서비스 / 기술 스택                      | 역할                       |
+| --------------------- | ------------------------------------ | ------------------------ |
+| **WebSocket Gateway** | Amazon API Gateway (WebSocket API)   | 클라이언트 영구 연결 관리, 호가/체결 푸시 |
+| **REST API**          | Amazon API Gateway (HTTP API) 또는 ALB | 주문 제출 REST 엔드포인트         |
+| **인증**                | Amazon Cognito 또는 자체 JWT             | 사용자 인증 및 토큰 검증           |
 
 ### 구현 포인트
 - API Gateway는 직접 Kafka로 쏘지 못하므로, Lambda 또는 Fargate로 구현된 **Order Router**를 붙입니다.

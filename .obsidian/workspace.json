@@ -185,6 +185,18 @@
   },
   "active": "2df01f10dcd40573",
   "lastOpenFiles": [
+    "AWS_CONSOLE_SETUP_GUIDE.md",
+    "wrapper/README.md",
+    "wrapper/build_ec2.sh",
+    "wrapper/src/main.cpp",
+    "wrapper/src/metrics.cpp",
+    "wrapper/src/grpc_service.cpp",
+    "wrapper/src/redis_client.cpp",
+    "wrapper/src/kafka_producer.cpp",
+    "wrapper/src/kafka_consumer.cpp",
+    "wrapper/src/market_data_handler.cpp",
+    "wrapper/src/engine_core.cpp",
+    "wrapper/src/order.cpp",
     "WINDOWS_BUILD_GUIDE.md"
   ]
 }
