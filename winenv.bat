@@ -12,24 +12,18 @@ REM Setting up LiquiBook environment
 @REM Customize this file by setting variables to suit your environment
 @REM Also you should customize the LiquiBook.features file to enable particular features on your system.
 
-@REM --------START: DELETE THESE LINES AFTER CUSTOMIZING ----
-@ECHO Please make a copy of %~f0 and customize it according to the instructions in the file.
-@ECHO You should also customize %~dp0\Liquibook.features
-@goto end
-@REM --------END: DELETE THESE LINES AFTER CUSTOMIZING ----
-
 @echo off
 REM =====================================================================================
 REM EDIT THE FOLLOWING LINES OR SET THESE VALUES IN YOUR ENVIRONMENT BEFORE RUNNING SETUP
-if "a" == "a%MPC_ROOT%" set MPC_ROOT=c:\MPC\MPC_4_1_22
-if "a" == "a%BOOST_VERSION%" set BOOST_VERSION=boost_1_61_0
+if "a" == "a%MPC_ROOT%" set MPC_ROOT=c:\MPC\
+if "a" == "a%BOOST_VERSION%" set BOOST_VERSION=boost_1_75_0
 if "a" == "a%BOOST_ROOT%" set BOOST_ROOT=c:\boost\%BOOST_VERSION%
 
 @REM TODO: For the pub/sub example program set QUICKFAST_ROOT 
 @rem to the actual quickfast directory and 
 @rem define XEERCESROOT
-if "a" == "a%QUICKFAST_ROOT%" set QUICKFAST_ROOT=noQuickFAST
-if "a" == "a%XERCESROOT%" set XERCESROOT=C:\Progs\xerces\xerces-c-3.1.1-x86_64-windows-vc-10.0
+if "a" == "a%QUICKFAST_ROOT%" set QUICKFAST_ROOT=C:\QuickFAST
+if "a" == "a%XERCESROOT%" set XERCESROOT=C:\vcpkg\installed\x64-windows
 
 REM END OF VALUES TO BE SET
 REM =====================================================================================
