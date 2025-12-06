@@ -55,7 +55,6 @@ add_executable(matching_engine
     src/metrics.cpp
     src/logger.cpp
     src/msk_iam_auth.cpp
-    src/websocket_server.cpp
 )
 
 target_link_libraries(matching_engine PRIVATE
