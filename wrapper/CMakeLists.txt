@@ -17,6 +17,7 @@ find_package(gRPC CONFIG REQUIRED)
 find_package(Protobuf CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(hiredis CONFIG REQUIRED)
+find_package(CURL REQUIRED)
 
 # Proto 파일 컴파일
 set(PROTO_FILES proto/snapshot.proto)
@@ -65,6 +66,7 @@ target_link_libraries(matching_engine PRIVATE
     hiredis::hiredis
     OpenSSL::SSL
     OpenSSL::Crypto
+    CURL::libcurl
 )
 
 # 테스트 (테스트 파일 생성 후 활성화)
