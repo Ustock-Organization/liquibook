@@ -3,7 +3,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <algorithm>
-#include <set>
+#include <list>
 #include <curl/curl.h>
 
 namespace aws_wrapper {
@@ -303,7 +303,7 @@ void MskOauthCallback::oauthbearer_token_refresh_cb(RdKafka::Handle* handle,
     // 토큰 만료 시간 (현재 + 10분)
     int64_t token_lifetime_ms = 600000;  // 10분
     
-    std::set<std::string> extensions;  // 빈 extensions
+    std::list<std::string> extensions;  // 빈 extensions
     std::string errstr;
     
     RdKafka::ErrorCode err = handle->oauthbearer_set_token(
