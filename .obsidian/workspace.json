@@ -185,6 +185,7 @@
   },
   "active": "2df01f10dcd40573",
   "lastOpenFiles": [
+    "wrapper/run_engine.sh",
     "wrapper/src/websocket_server.cpp",
     "wrapper/include/websocket_server.h",
     "wrapper/include/msk_iam_auth.h",
@@ -200,7 +201,6 @@
     "wrapper/src/main.cpp",
     "wrapper/src/metrics.cpp",
     "wrapper/src/grpc_service.cpp",
-    "wrapper/src/redis_client.cpp",
-    "wrapper/src/kafka_producer.cpp"
+    "wrapper/src/redis_client.cpp"
   ]
 }

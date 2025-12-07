@@ -3,13 +3,18 @@
   "version": "1.0.0",
   "description": "C++ AWS wrapper for Liquibook matching engine",
   "dependencies": [
-    "librdkafka",
+    {
+      "name": "librdkafka",
+      "features": ["ssl", "sasl"]
+    },
     "grpc",
     "protobuf",
     "nlohmann-json",
     "hiredis",
     "gtest",
-    "curl"
+    "curl",
+    "openssl"
   ]
 }
+
 
