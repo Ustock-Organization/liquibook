@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "AWS_CONSOLE_SETUP_GUIDE.md",
+                "file": "AWS_ARCHITECTURE.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "AWS_CONSOLE_SETUP_GUIDE"
+              "title": "AWS_ARCHITECTURE"
             }
           }
         ]
@@ -185,22 +185,21 @@
   },
   "active": "2df01f10dcd40573",
   "lastOpenFiles": [
+    "AWS_CONSOLE_SETUP_GUIDE.md",
+    "AWS_ARCHITECTURE.md",
+    "PERFORMANCE.md",
+    "README_ORDER_ENTRY.md",
+    "WINDOWS_BUILD_GUIDE.md",
     "wrapper/run_engine.sh",
     "wrapper/src/websocket_server.cpp",
     "wrapper/include/websocket_server.h",
     "wrapper/include/msk_iam_auth.h",
     "wrapper/src/msk_iam_auth.cpp",
-    "README_ORDER_ENTRY.md",
-    "WINDOWS_BUILD_GUIDE.md",
-    "PERFORMANCE.md",
-    "AWS_ARCHITECTURE.md",
-    "AWS_CONSOLE_SETUP_GUIDE.md",
     "generate_architecture.py",
     "wrapper/README.md",
     "wrapper/build_ec2.sh",
     "wrapper/src/main.cpp",
     "wrapper/src/metrics.cpp",
-    "wrapper/src/grpc_service.cpp",
-    "wrapper/src/redis_client.cpp"
+    "wrapper/src/grpc_service.cpp"
   ]
 }
