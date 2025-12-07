@@ -4,6 +4,7 @@
 #include <string>
 #include <memory>
 #include <optional>
+#include <vector>
 
 namespace aws_wrapper {
 
@@ -21,6 +22,7 @@ public:
     std::optional<std::string> get(const std::string& key);
     bool del(const std::string& key);
     bool exists(const std::string& key);
+    std::vector<std::string> keys(const std::string& pattern);
     
     // 스냅샷 전용
     bool saveSnapshot(const std::string& symbol, const std::string& data);

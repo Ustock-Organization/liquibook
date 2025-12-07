@@ -131,4 +131,25 @@ std::optional<std::string> RedisClient::loadSnapshot(const std::string& symbol) 
     return get(key);
 }
 
+std::vector<std::string> RedisClient::keys(const std::string& pattern) {
+    std::vector<std::string> result;
+    if (!context_) return result;
+    
+    auto reply = static_cast<redisReply*>(
+        redisCommand(context_, "KEYS %s", pattern.c_str()));
+    
+    if (!reply) return result;
+    
+    if (reply->type == REDIS_REPLY_ARRAY) {
+        for (size_t i = 0; i < reply->elements; ++i) {
+            if (reply->element[i]->type == REDIS_REPLY_STRING) {
+                result.emplace_back(reply->element[i]->str, reply->element[i]->len);
+            }
+        }
+    }
+    
+    freeReplyObject(reply);
+    return result;
+}
+
 } // namespace aws_wrapper

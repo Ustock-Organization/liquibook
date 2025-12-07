@@ -61,7 +61,8 @@ int main(int argc, char* argv[]) {
     try {
         // Redis 연결
         RedisClient redis(redis_host, redis_port);
-        if (!redis.connect()) {
+        bool redis_connected = redis.connect();
+        if (!redis_connected) {
             Logger::warn("Redis connection failed - continuing without cache");
         }
         
@@ -71,6 +72,21 @@ int main(int argc, char* argv[]) {
         // 핸들러 및 엔진 생성
         MarketDataHandler handler(&producer);
         EngineCore engine(&handler);
+        
+        // === 시작 시 Redis에서 스냅샷 복원 ===
+        if (redis_connected) {
+            Logger::info("Restoring snapshots from Redis...");
+            auto snapshot_keys = redis.keys("snapshot:*");
+            for (const auto& key : snapshot_keys) {
+                std::string symbol = key.substr(9);  // "snapshot:" 제거
+                auto snapshot_data = redis.get(key);
+                if (!snapshot_data.empty()) {
+                    engine.restoreOrderBook(symbol, snapshot_data);
+                    Logger::info("Restored orderbook:", symbol);
+                }
+            }
+            Logger::info("Restored", snapshot_keys.size(), "orderbooks from Redis");
+        }
         
         // Kafka Consumer 시작
         KafkaConsumer consumer(kafka_brokers, kafka_topic, kafka_group);
@@ -107,21 +123,56 @@ int main(int argc, char* argv[]) {
         Logger::info("=== Engine Running ===");
         Logger::info("Press Ctrl+C to stop");
         
-        // 메트릭 리포트 간격
+        // 타이머 변수
         auto last_report = std::chrono::steady_clock::now();
+        auto last_snapshot = std::chrono::steady_clock::now();
+        const int SNAPSHOT_INTERVAL_SECONDS = 10;
+        const int METRICS_INTERVAL_SECONDS = 30;
         
         // 메인 루프
         while (g_running) {
             std::this_thread::sleep_for(std::chrono::seconds(1));
             
-            // 30초마다 메트릭 리포트
             auto now = std::chrono::steady_clock::now();
+            
+            // 10초마다 자동 스냅샷 저장
+            if (redis_connected && 
+                std::chrono::duration_cast<std::chrono::seconds>(
+                    now - last_snapshot).count() >= SNAPSHOT_INTERVAL_SECONDS) {
+                
+                auto symbols = engine.getAllSymbols();
+                for (const auto& symbol : symbols) {
+                    auto snapshot = engine.snapshotOrderBook(symbol);
+                    if (!snapshot.empty()) {
+                        redis.set("snapshot:" + symbol, snapshot);
+                    }
+                }
+                if (!symbols.empty()) {
+                    Logger::debug("Auto-saved", symbols.size(), "orderbook snapshots to Redis");
+                }
+                last_snapshot = now;
+            }
+            
+            // 30초마다 메트릭 리포트
             if (std::chrono::duration_cast<std::chrono::seconds>(
-                    now - last_report).count() >= 30) {
+                    now - last_report).count() >= METRICS_INTERVAL_SECONDS) {
                 Metrics::instance().setSymbolCount(engine.getSymbolCount());
                 Logger::info("Metrics:", Metrics::instance().toJson());
                 last_report = now;
             }
+        }
+        
+        // === 종료 전 최종 스냅샷 저장 ===
+        if (redis_connected) {
+            Logger::info("Saving final snapshots before shutdown...");
+            auto symbols = engine.getAllSymbols();
+            for (const auto& symbol : symbols) {
+                auto snapshot = engine.snapshotOrderBook(symbol);
+                if (!snapshot.empty()) {
+                    redis.set("snapshot:" + symbol, snapshot);
+                }
+            }
+            Logger::info("Saved", symbols.size(), "snapshots");
         }
         
         // 정리

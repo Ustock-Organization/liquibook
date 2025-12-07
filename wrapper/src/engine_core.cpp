@@ -185,4 +185,14 @@ size_t EngineCore::getOrderCount(const std::string& symbol) const {
     return it->second.size();
 }
 
+std::vector<std::string> EngineCore::getAllSymbols() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::vector<std::string> symbols;
+    symbols.reserve(books_.size());
+    for (const auto& [sym, book] : books_) {
+        symbols.push_back(sym);
+    }
+    return symbols;
+}
+
 } // namespace aws_wrapper

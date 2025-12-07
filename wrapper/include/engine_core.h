@@ -6,6 +6,7 @@
 #include <map>
 #include <mutex>
 #include <string>
+#include <vector>
 
 namespace aws_wrapper {
 
@@ -30,6 +31,7 @@ public:
     // === 메트릭 API ===
     size_t getSymbolCount() const;
     size_t getOrderCount(const std::string& symbol) const;
+    std::vector<std::string> getAllSymbols() const;
     uint64_t getTotalOrdersProcessed() const { return total_orders_processed_; }
     uint64_t getTotalTradesExecuted() const { return total_trades_executed_; }
     
