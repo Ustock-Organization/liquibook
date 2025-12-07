@@ -80,8 +80,8 @@ int main(int argc, char* argv[]) {
             for (const auto& key : snapshot_keys) {
                 std::string symbol = key.substr(9);  // "snapshot:" 제거
                 auto snapshot_data = redis.get(key);
-                if (!snapshot_data.empty()) {
-                    engine.restoreOrderBook(symbol, snapshot_data);
+                if (snapshot_data.has_value()) {
+                    engine.restoreOrderBook(symbol, snapshot_data.value());
                     Logger::info("Restored orderbook:", symbol);
                 }
             }
