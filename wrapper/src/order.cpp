@@ -11,8 +11,13 @@ std::shared_ptr<Order> Order::fromJson(const nlohmann::json& j) {
     order->user_id_ = j.value("user_id", "");
     order->symbol_ = j.value("symbol", "");
     
-    std::string side = j.value("side", "BUY");
-    order->is_buy_ = (side == "BUY" || side == "buy");
+    // is_buy (boolean) 또는 side (string) 둘 다 지원
+    if (j.contains("is_buy")) {
+        order->is_buy_ = j["is_buy"].get<bool>();
+    } else {
+        std::string side = j.value("side", "BUY");
+        order->is_buy_ = (side == "BUY" || side == "buy");
+    }
     
     order->price_ = j.value("price", 0);
     order->order_qty_ = j.value("quantity", 0);
