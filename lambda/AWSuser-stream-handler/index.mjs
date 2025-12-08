@@ -1,5 +1,5 @@
 // user-stream-handler - 로그인 사용자용 스트리밍 Lambda
-// MSK fills, depth, order_status 토픽 구독 → 개인 체결 알림 + 실시간 호가
+// Kinesis fills, order_status 스트림 구독 → 개인 체결 알림 + 주문 상태
 import Redis from 'ioredis';
 import { ApiGatewayManagementApiClient, PostToConnectionCommand } from '@aws-sdk/client-apigatewaymanagementapi';
 
@@ -41,95 +41,79 @@ async function sendToUser(client, userId, data) {
   await Promise.allSettled(promises);
 }
 
-async function broadcastDepth(client, symbol, depthData) {
-  const subscribers = await valkey.smembers(`symbol:${symbol}:subscribers`);
-  const promises = subscribers.map(connId => 
-    sendToConnection(client, connId, {
-      type: 'DEPTH',
-      symbol,
-      data: depthData,
-      timestamp: Date.now(),
-    })
-  );
-  await Promise.allSettled(promises);
-}
-
 export const handler = async (event) => {
   const client = getApiGatewayClient();
   
-  for (const [topic, partitions] of Object.entries(event.records || {})) {
-    for (const record of partitions) {
-      try {
-        const value = Buffer.from(record.value, 'base64').toString('utf8');
-        const data = JSON.parse(value);
+  // Kinesis 이벤트 처리
+  for (const record of event.Records || []) {
+    try {
+      const value = Buffer.from(record.kinesis.data, 'base64').toString('utf8');
+      const data = JSON.parse(value);
+      
+      // eventSourceARN으로 스트림 식별
+      const streamName = record.eventSourceARN?.split('/').pop() || '';
+      
+      if (streamName.includes('fills')) {
+        // 체결 알림 - 매수자/매도자에게 개별 전송
+        const { buyer, seller, symbol, price, quantity, trade_id } = data;
         
-        // 토픽별 처리
-        if (topic.includes('fills')) {
-          // 체결 알림 - 매수자/매도자에게 개별 전송
-          const { buyer, seller, symbol, price, quantity, trade_id } = data;
-          
-          if (buyer?.user_id) {
-            await sendToUser(client, buyer.user_id, {
-              type: 'FILL',
-              data: {
-                trade_id,
-                symbol,
-                side: 'BUY',
-                order_id: buyer.order_id,
-                filled_qty: quantity,
-                filled_price: price,
-                timestamp: data.timestamp,
-              },
-            });
-          }
-          
-          if (seller?.user_id) {
-            await sendToUser(client, seller.user_id, {
-              type: 'FILL',
-              data: {
-                trade_id,
-                symbol,
-                side: 'SELL',
-                order_id: seller.order_id,
-                filled_qty: quantity,
-                filled_price: price,
-                timestamp: data.timestamp,
-              },
-            });
-          }
-          
-          console.log(`Fill notification sent: ${trade_id}`);
-          
-        } else if (topic.includes('order_status')) {
-          // 주문 상태 변경 - 해당 사용자에게 전송
-          const { user_id, order_id, symbol, status, reason } = data;
-          
-          if (user_id) {
-            await sendToUser(client, user_id, {
-              type: 'ORDER_STATUS',
-              data: {
-                order_id,
-                symbol,
-                status, // ACCEPTED, REJECTED, CANCELLED, etc.
-                reason,
-                timestamp: data.timestamp,
-              },
-            });
-          }
-          
-          console.log(`Order status sent: ${order_id} -> ${status}`);
-          
-        } else if (topic.includes('depth')) {
-          // 호가 변경 - 로그인 사용자용 실시간 (스로틀 없음)
-          const { symbol, bids, asks } = data;
-          await broadcastDepth(client, symbol, { bids, asks });
+        if (buyer?.user_id) {
+          await sendToUser(client, buyer.user_id, {
+            type: 'FILL',
+            data: {
+              trade_id,
+              symbol,
+              side: 'BUY',
+              order_id: buyer.order_id,
+              filled_qty: quantity,
+              filled_price: price,
+              timestamp: data.timestamp,
+            },
+          });
         }
         
-      } catch (error) {
-        console.error('Error processing record:', error);
+        if (seller?.user_id) {
+          await sendToUser(client, seller.user_id, {
+            type: 'FILL',
+            data: {
+              trade_id,
+              symbol,
+              side: 'SELL',
+              order_id: seller.order_id,
+              filled_qty: quantity,
+              filled_price: price,
+              timestamp: data.timestamp,
+            },
+          });
+        }
+        
+        console.log(`Fill notification sent: ${trade_id}`);
+        
+      } else if (streamName.includes('order-status')) {
+        // 주문 상태 변경 - 해당 사용자에게 전송
+        const { user_id, order_id, symbol, status, reason } = data;
+        
+        if (user_id) {
+          await sendToUser(client, user_id, {
+            type: 'ORDER_STATUS',
+            data: {
+              order_id,
+              symbol,
+              status, // ACCEPTED, REJECTED, CANCELLED, etc.
+              reason,
+              timestamp: data.timestamp,
+            },
+          });
+        }
+        
+        console.log(`Order status sent: ${order_id} -> ${status}`);
       }
+      
+    } catch (error) {
+      console.error('Error processing record:', error);
     }
   }
   
   return { statusCode: 200, body: 'OK' };
 };
+

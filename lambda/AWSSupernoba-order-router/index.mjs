@@ -1,15 +1,14 @@
-// order-router Lambda - 주문 라우터 (업데이트 버전)
-// Supabase 잔고 확인 + UUID 생성 + MSK 발행
-import { Kafka } from 'kafkajs';
+// order-router Lambda - 주문 라우터 (Kinesis 버전)
+// Supabase 잔고 확인 + UUID 생성 + Kinesis 발행
+import { KinesisClient, PutRecordCommand } from '@aws-sdk/client-kinesis';
 import Redis from 'ioredis';
-import { generateAuthToken } from 'aws-msk-iam-sasl-signer-js';
 import { createClient } from '@supabase/supabase-js';
+
+const kinesis = new KinesisClient({ region: process.env.AWS_REGION || 'ap-northeast-2' });
 
 const valkey = new Redis({
   host: process.env.VALKEY_HOST,
   port: parseInt(process.env.VALKEY_PORT || '6379'),
-  //password: process.env.VALKEY_AUTH_TOKEN,
-  //tls: {},
 });
 
 // Supabase 클라이언트 (지연 초기화 - NAT Gateway 없을 시 사용 안함)
@@ -33,72 +32,10 @@ function generateOrderId() {
   return `ord_${timestamp}_${randomPart}`;
 }
 
-async function createKafkaClient() {
-  const region = process.env.AWS_REGION || 'ap-northeast-2';
-  
-  return new Kafka({
-    clientId: 'order-router',
-    brokers: process.env.MSK_BOOTSTRAP_SERVERS.split(','),
-    ssl: true,
-    sasl: {
-      mechanism: 'oauthbearer',
-      oauthBearerProvider: async () => {
-        const token = await generateAuthToken({ region });
-        return { value: token.token };
-      },
-    },
-  });
-}
-
 // Supabase에서 사용자 잔고 확인 (현재 비활성화 - NAT Gateway 필요)
 async function checkBalance(userId, side, symbol, price, quantity) {
   // TODO: NAT Gateway 추가 후 활성화
   return { success: true, skipped: true };
-  
-  /*
-  const sb = getSupabase();
-  if (!sb) {
-    return { success: true, skipped: true };
-  }
-  
-  try {
-    const { data, error } = await sb
-      .from('user_balances')
-      .select('cash_balance, positions')
-      .eq('user_id', userId)
-      .single();
-    
-    if (error || !data) {
-      console.error('Balance check error:', error);
-      return { success: false, reason: 'User not found' };
-    }
-    
-    if (side === 'BUY') {
-      const requiredAmount = price * quantity;
-      if (data.cash_balance < requiredAmount) {
-        return { 
-          success: false, 
-          reason: `Insufficient balance: need ${requiredAmount}, have ${data.cash_balance}` 
-        };
-      }
-    } else if (side === 'SELL') {
-      const positions = data.positions || {};
-      const heldQty = positions[symbol]?.quantity || 0;
-      if (heldQty < quantity) {
-        return { 
-          success: false, 
-          reason: `Insufficient position: need ${quantity}, have ${heldQty}` 
-        };
-      }
-    }
-    
-    return { success: true, balance: data.cash_balance };
-  } catch (error) {
-    console.error('Balance check exception:', error);
-    // 에러 시 통과 (NAT Gateway 없을 경우)
-    return { success: true, skipped: true, error: error.message };
-  }
-  */
 }
 
 export const handler = async (event) => {
@@ -164,14 +101,10 @@ export const handler = async (event) => {
     console.log('Step 2: Valkey get done:', routeInfo);
     const route = routeInfo ? JSON.parse(routeInfo) : { status: 'ACTIVE' };
     
-    // Kafka 연결
-    console.log('Step 3: Kafka connect starting...');
-    const kafka = await createKafkaClient();
-    const producer = kafka.producer();
-    await producer.connect();
-    console.log('Step 3: Kafka connected!');
-    
-    const topic = route.status === 'MIGRATING' ? 'pending-orders' : (process.env.ORDERS_TOPIC || 'orders');
+    // Kinesis 스트림 선택
+    const streamName = route.status === 'MIGRATING' 
+      ? 'supernoba-pending-orders' 
+      : (process.env.KINESIS_ORDERS_STREAM || 'supernoba-orders');
     
     // 주문 ID 생성 (UUID 기반)
     const orderId = generateOrderId();
@@ -189,15 +122,14 @@ export const handler = async (event) => {
       timestamp: Date.now(),
     };
     
-    await producer.send({
-      topic,
-      messages: [{
-        key: order.symbol,
-        value: JSON.stringify(orderMessage),
-      }],
-    });
-    
-    await producer.disconnect();
+    // Kinesis에 발행
+    console.log('Step 3: Kinesis PutRecord starting...');
+    await kinesis.send(new PutRecordCommand({
+      StreamName: streamName,
+      Data: Buffer.from(JSON.stringify(orderMessage)),
+      PartitionKey: order.symbol,  // 종목별 순서 보장
+    }));
+    console.log('Step 3: Kinesis PutRecord done!');
     
     return {
       statusCode: 200,
@@ -205,7 +137,7 @@ export const handler = async (event) => {
       body: JSON.stringify({ 
         message: 'Order accepted',
         order_id: orderId,
-        topic,
+        stream: streamName,
         symbol: order.symbol,
         side: order.side,
       }),
