@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "doc/KINESIS_ARCHITECTURE.md",
+                "file": "AWS_ARCHITECTURE.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "KINESIS_ARCHITECTURE"
+              "title": "AWS_ARCHITECTURE"
             }
           }
         ]
@@ -78,7 +78,8 @@
       }
     ],
     "direction": "horizontal",
-    "width": 300
+    "width": 300,
+    "collapsed": true
   },
   "right": {
     "id": "b1f04978464e61af",
@@ -185,30 +186,31 @@
   },
   "active": "2df01f10dcd40573",
   "lastOpenFiles": [
-    "wrapper/include/iproducer.h",
-    "doc/api/README.md",
-    "wrapper/src/kinesis_producer.cpp",
-    "wrapper/src/kinesis_consumer.cpp",
-    "wrapper/include/kinesis_producer.h",
-    "wrapper/include/kinesis_consumer.h",
-    "doc/KINESIS_ARCHITECTURE.md",
+    "AWS_CONSOLE_SETUP_GUIDE.md",
     "AWS_ARCHITECTURE.md",
-    "doc/api",
+    "doc/KINESIS_ARCHITECTURE.md",
+    "streamer/src/depth_broadcaster.cpp",
+    "streamer/src/websocket_server.cpp",
+    "streamer/src/redis_client.cpp",
+    "streamer/src/main.cpp",
+    "streamer/src",
+    "streamer/include/depth_broadcaster.h",
+    "streamer/include/websocket_server.h",
+    "streamer/include/redis_client.h",
+    "streamer/include",
+    "streamer/CMakeLists.txt",
+    "streamer/README.md",
+    "doc/api/README.md",
     "doc/AWS-MSK-DOC/자습서.md",
     "doc/AWS-MSK-DOC/구성 파라미터.md",
     "doc/AWS-MSK-DOC/계정 간 이벤트 소스 매핑 생성.md",
     "doc/AWS-MSK-DOC/이벤트 소스 매핑.md",
     "doc/AWS-MSK-DOC/클러스터 인증.md",
     "doc/AWS-MSK-DOC/이벤트 소스 구성.md",
-    "doc/AWS-MSK-DOC/이벤트 소스 구성",
     "doc/AWS-MSK-DOC/권한 구성.md",
-    "doc/AWS-MSK-DOC/권한 구성",
     "doc/AWS-MSK-DOC/클러스터 및 네트워크 설정.md",
     "doc/AWS-MSK-DOC/자습서_ Amazon MSK 이벤트 소스 매핑을 사용하여 간접적으로 Lambda 함수 간접 호출 - AWS Lambda_files/aws_logo_dark.svg",
     "doc/AWS-MSK-DOC/자습서_ Amazon MSK 이벤트 소스 매핑을 사용하여 간접적으로 Lambda 함수 간접 호출 - AWS Lambda_files/msk_tut_log.png",
-    "doc/AWS-MSK-DOC/자습서_ Amazon MSK 이벤트 소스 매핑을 사용하여 간접적으로 Lambda 함수 간접 호출 - AWS Lambda_files/dest5.html",
-    "doc/AWS-MSK-DOC/자습서_ Amazon MSK 이벤트 소스 매핑을 사용하여 간접적으로 Lambda 함수 간접 호출 - AWS Lambda_files/awshome_s_code.js.다운로드",
-    "doc/AWS-MSK-DOC/자습서_ Amazon MSK 이벤트 소스 매핑을 사용하여 간접적으로 Lambda 함수 간접 호출 - AWS Lambda_files/d2c-load.js.다운로드",
     "doc/AWS-MSK-DOC/자습서_ Amazon MSK 이벤트 소스 매핑을 사용하여 간접적으로 Lambda 함수 간접 호출 - AWS Lambda_files/deploy-console.png",
     "doc/AWS-MSK-DOC/자습서_ Amazon MSK 이벤트 소스 매핑을 사용하여 간접적으로 Lambda 함수 간접 호출 - AWS Lambda_files/msk_tut_network.png",
     "doc/AWS-MSK-DOC/Lambda에서의 모든 Amazon MSK 이벤트 소스 구성 파라미터 - AWS Lambda_files/aws_logo_dark.svg",
@@ -220,7 +222,6 @@
     "test/web/README.md",
     "lambda/README.md",
     "wrapper/README.md",
-    "AWS_CONSOLE_SETUP_GUIDE.md",
     "PERFORMANCE.md",
     "README_ORDER_ENTRY.md",
     "WINDOWS_BUILD_GUIDE.md"

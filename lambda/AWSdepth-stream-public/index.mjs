@@ -6,6 +6,18 @@ import { ApiGatewayManagementApiClient, PostToConnectionCommand } from '@aws-sdk
 const valkey = new Redis({
   host: process.env.VALKEY_HOST,
   port: parseInt(process.env.VALKEY_PORT || '6379'),
+  tls: {},  // ElastiCache TLS 필요
+  connectTimeout: 5000,
+  maxRetriesPerRequest: 1,
+  lazyConnect: false,
+});
+
+valkey.on('error', (err) => {
+  console.error('Redis connection error:', err.message);
+});
+
+valkey.on('connect', () => {
+  console.log('Redis connected to:', process.env.VALKEY_HOST);
 });
 
 // 마지막 전송 시간 캐시 (심볼별)
@@ -13,20 +25,26 @@ const lastSentTime = new Map();
 const THROTTLE_MS = 500; // 0.5초 간격
 
 function getApiGatewayClient() {
+  const endpoint = `https://${process.env.WEBSOCKET_ENDPOINT}`;
+  console.log(`API Gateway endpoint: ${endpoint}`);
   return new ApiGatewayManagementApiClient({
-    endpoint: `https://${process.env.WEBSOCKET_ENDPOINT}`,
+    endpoint,
     region: process.env.AWS_REGION || 'ap-northeast-2',
   });
 }
 
 async function sendToConnection(client, connectionId, data) {
   try {
+    console.log(`Sending to connection: ${connectionId}`);
     await client.send(new PostToConnectionCommand({
       ConnectionId: connectionId,
       Data: JSON.stringify(data),
     }));
+    console.log(`SUCCESS: Sent to ${connectionId}`);
     return true;
   } catch (error) {
+    console.error(`FAILED: ${connectionId} - ${error.name}: ${error.message}`);
+    console.error(`Error details: statusCode=${error.$metadata?.httpStatusCode}, requestId=${error.$metadata?.requestId}`);
     if (error.$metadata?.httpStatusCode === 410) {
       // 연결 끊어짐 - 정리
       const connInfo = await valkey.get(`ws:${connectionId}`);
@@ -42,6 +60,7 @@ async function sendToConnection(client, connectionId, data) {
 }
 
 export const handler = async (event) => {
+  console.log(`Received ${event.Records?.length || 0} Kinesis records`);
   const client = getApiGatewayClient();
   
   // Kinesis 이벤트 처리
@@ -64,10 +83,10 @@ export const handler = async (event) => {
       // 해당 심볼 구독자 조회
       const subscribers = await valkey.smembers(`symbol:${symbol}:subscribers`);
       
-      console.log(`Broadcasting depth for ${symbol} to ${subscribers.length} subscribers`);
+      console.log(`Broadcasting depth for ${symbol} to ${subscribers.length} subscribers: [${subscribers.slice(0, 3).join(', ')}${subscribers.length > 3 ? '...' : ''}]`);
       
       // 모든 구독자에게 전송
-      const sendPromises = subscribers.map(connectionId => 
+      const results = await Promise.allSettled(subscribers.map(connectionId => 
         sendToConnection(client, connectionId, {
           type: 'DEPTH',
           symbol,
@@ -77,9 +96,11 @@ export const handler = async (event) => {
           },
           timestamp: now,
         })
-      );
+      ));
       
-      await Promise.allSettled(sendPromises);
+      const succeeded = results.filter(r => r.status === 'fulfilled' && r.value === true).length;
+      const failed = results.length - succeeded;
+      console.log(`Broadcast complete: ${succeeded} success, ${failed} failed`);
       
     } catch (error) {
       console.error('Error processing record:', error);

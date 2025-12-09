@@ -1,19 +1,180 @@
-# AWS 핫 샤드 마이그레이션 아키텍처
+# AWS Supernoba 아키텍처
 
-핫 샤드 마이그레이션을 지원하는 AWS 기반 매칭 엔진 인프라의 기술 스택과 구현 방안입니다.
+Amazon Kinesis 기반 실시간 매칭 엔진 인프라 (2025-12-09 현재 운영 중)
 
 ## 전체 아키텍처 개요
 
 ```mermaid
 graph LR
-    Client[Client] --> APIG[API Gateway]
-    APIG --> Router[Order Router]
-    Router --> MSK[MSK]
-    Router --> Redis[(Redis)]
-    MSK --> Engine[Matching Engine Cluster]
-    Engine --> S3[(State Snapshot S3)]
-    Redis --> CW[CloudWatch / Step Functions]
+    subgraph Client["클라이언트"]
+        Web[Web Browser]
+    end
+    
+    subgraph AWS["AWS Cloud (ap-northeast-2)"]
+        subgraph Public["Public Internet"]
+            APIG[API Gateway<br/>WebSocket + REST]
+        end
+        
+        subgraph VPC["VPC (172.31.0.0/16)"]
+            subgraph Kinesis["Amazon Kinesis"]
+                K1[supernoba-orders]
+                K2[supernoba-fills]
+                K3[supernoba-depth]
+                K4[supernoba-order-status]
+            end
+            
+            subgraph Lambda["Lambda Functions"]
+                Router[Order Router]
+                Depth[depth-stream-public]
+                User[user-stream-handler]
+                Connect[connect-handler]
+            end
+            
+            subgraph EC2["EC2"]
+                Engine[Matching Engine<br/>Liquibook C++]
+            end
+            
+            subgraph ElastiCache["ElastiCache Valkey"]
+                DepthCache[(supernoba-depth-cache<br/>호가 스트리밍)]
+                BackupCache[(Orderbook-backup-cache<br/>오더북 백업)]
+            end
+            
+            NAT[NAT Gateway<br/>13.125.71.17]
+        end
+    end
+    
+    Web <-->|WSS| APIG
+    APIG --> Router
+    APIG --> Connect
+    Router --> K1
+    K1 --> Engine
+    Engine --> K2
+    Engine --> K3
+    Engine --> K4
+    Engine --> BackupCache
+    K3 --> Depth
+    K2 --> User
+    K4 --> User
+    Depth --> DepthCache
+    Depth --> NAT
+    NAT -->|PostToConnection| APIG
+    APIG -->|Push| Web
 ```
+
+---
+
+## VPC 네트워크 구성
+
+```mermaid
+graph TB
+    subgraph VPC["VPC: Supernoba_back (172.31.0.0/16)"]
+        subgraph AZa["ap-northeast-2a"]
+            Sub1[subnet-911ebefa<br/>172.31.0.0/20]
+        end
+        subgraph AZb["ap-northeast-2b"]
+            Sub2[subnet-9e23bee5<br/>172.31.16.0/20]
+        end
+        subgraph AZc["ap-northeast-2c"]
+            Sub3[subnet-4d786f01<br/>172.31.32.0/20]
+        end
+        
+        NAT[NAT Gateway<br/>nat-17d68eebde280f74f<br/>IP: 13.125.71.17]
+        
+        subgraph VPCE["VPC Endpoints"]
+            KinesisVPCE[Kinesis Streams]
+            LambdaVPCE[Lambda]
+            STSVPCE[STS]
+            ElastiCacheVPCE[ElastiCache]
+        end
+    end
+    
+    subgraph External["External"]
+        IGW[Internet Gateway<br/>igw-cfc6a3a7]
+        APIG[API Gateway<br/>WebSocket]
+    end
+    
+    Sub1 --> NAT
+    Sub2 --> NAT
+    Sub3 --> NAT
+    NAT --> IGW
+    IGW --> APIG
+    
+    style NAT fill:#f96,stroke:#333
+    style APIG fill:#9cf,stroke:#333
+```
+
+### NAT Gateway 설정
+
+| 구성 요소 | 값 |
+|---------|-----|
+| **NAT Gateway ID** | `nat-17d68eebde280f74f` |
+| **Elastic IP** | `13.125.71.17` |
+| **VPC** | `vpc-314afc5a (Supernoba_back)` |
+| **라우팅 테이블** | `0.0.0.0/0 → nat-17d68eebde280f74f` |
+
+---
+
+## 실시간 스트리밍 데이터 흐름
+
+```mermaid
+sequenceDiagram
+    participant Client as Web Client
+    participant APIG as API Gateway WebSocket
+    participant Subscribe as subscribe-handler
+    participant Valkey as ElastiCache Valkey
+    participant Kinesis as Kinesis supernoba-depth
+    participant Depth as depth-stream-public
+    participant NAT as NAT Gateway
+
+    Client->>APIG: WebSocket 연결
+    Client->>APIG: {"action":"subscribe","symbols":["TEST"]}
+    APIG->>Subscribe: subscribe route
+    Subscribe->>Valkey: SADD symbol:TEST:subscribers {connectionId}
+    Subscribe-->>Client: {"subscribed":["TEST"]}
+
+    Note over Kinesis: C++ Engine이 호가 변동 발행
+    Kinesis->>Depth: Kinesis 트리거
+    Depth->>Valkey: SMEMBERS symbol:TEST:subscribers
+    Depth->>NAT: PostToConnection (VPC 내부)
+    NAT->>APIG: HTTPS (공개 인터넷)
+    APIG->>Client: {"type":"DEPTH","data":{...}}
+```
+
+---
+
+## 현재 구현 상태 (2025-12-09)
+
+### 배포된 AWS 리소스
+
+| 서비스 | 리소스 이름 | 상태 |
+|---|---|---|
+| **Amazon Kinesis** | `supernoba-orders`, `supernoba-fills`, `supernoba-depth`, `supernoba-order-status` | ✅ 운영 중 |
+| **ElastiCache Valkey** | `supernoba-depth-cache`, `Orderbook-backup-cache` | ✅ 운영 중 |
+| **API Gateway WebSocket** | `Supernoba-ws` (l2ptm85wub) | ✅ 운영 중 |
+| **NAT Gateway** | `nat-17d68eebde280f74f` (13.125.71.17) | ✅ 운영 중 |
+
+### Lambda 함수
+
+| 함수명 | 트리거 | 역할 |
+|--------|--------|------|
+| `Supernoba-order-router` | API Gateway REST | 주문 접수 → Kinesis 발행 |
+| `depth-stream-public` | Kinesis `supernoba-depth` | 호가 → NAT Gateway → WebSocket 푸시 |
+| `user-stream-handler` | Kinesis `fills`, `order-status` | 체결/상태 → 개인 WebSocket |
+| `connect-handler` | API Gateway `$connect` | WebSocket 연결 관리 |
+| `subscribe-handler` | API Gateway `subscribe` | 심볼 구독 처리 |
+| `disconnect-handler` | API Gateway `$disconnect` | 연결 해제 정리 |
+
+### 요약 기술 스택
+
+| 레이어 | 주요 기술 |
+|---|---|
+| 클라이언트 진입 | API Gateway (HTTP/WebSocket) |
+| 라우팅 | Lambda (Order Router), ElastiCache Valkey |
+| 메시지 큐 | **Amazon Kinesis Data Streams** (4개 스트림) |
+| 매칭 엔진 | Liquibook C++ + AWS SDK on EC2 |
+| 실시간 스트리밍 | Kinesis → Lambda → **NAT Gateway** → API Gateway → Client |
+
+---
 
 ---
 

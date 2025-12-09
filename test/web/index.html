@@ -178,6 +178,24 @@
             color: var(--success);
         }
 
+        .orderbook-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 8px;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.85rem;
+            font-family: 'Consolas', monospace;
+        }
+
+        .orderbook-row:hover {
+            background: var(--bg-input);
+        }
+
+        .disabled-section {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
         .status-disconnected {
             background: rgba(248, 81, 73, 0.2);
             color: var(--danger);
@@ -425,60 +443,50 @@
                 <div id="orderResponse" class="response-box" style="display: none;"></div>
             </div>
 
-            <!-- 호가창 -->
+            <!-- 41틱 호가창 (현재가 + 상위 20틱 + 하위 20틱) -->
             <div class="card">
-                <h2>실시간 호가창</h2>
-                <div class="form-group">
-                    <label>심볼 선택</label>
-                    <select id="orderbookSymbol" onchange="selectOrderbookSymbol()">
-                        <option value="AAPL">AAPL</option>
-                        <option value="GOOGL">GOOGL</option>
-                        <option value="TSLA">TSLA</option>
-                    </select>
+                <h2>실시간 호가창 (41틱)</h2>
+                <div id="orderbookTabs" class="tabs" style="margin-bottom: 10px;">
+                    <div class="tab" style="color: var(--text-muted);">구독된 심볼 없음</div>
                 </div>
-                <div class="orderbook">
-                    <div class="orderbook-side asks">
-                        <h3>매도 (ASK)</h3>
-                        <div id="asksList">
-                            <div class="orderbook-row"><span>-</span><span>-</span></div>
+                <div id="currentPriceDisplay" style="font-size: 1.2rem; font-weight: bold; text-align: center; padding: 10px; background: var(--surface); border-radius: 8px; margin-bottom: 10px;">
+                    현재가: -
+                </div>
+                <div class="orderbook" style="display: flex; gap: 20px;">
+                    <div class="orderbook-side asks" style="flex: 1;">
+                        <h3 style="color: var(--error);">매도 (ASK) +20틱</h3>
+                        <div class="orderbook-header" style="display: flex; justify-content: space-between; padding: 4px 8px; border-bottom: 1px solid var(--border); font-weight: bold; font-size: 0.8rem;">
+                            <span>가격</span><span>수량</span>
+                        </div>
+                        <div id="asksList" style="max-height: 500px; overflow-y: auto;">
                         </div>
                     </div>
-                    <div class="orderbook-side bids">
-                        <h3>매수 (BID)</h3>
-                        <div id="bidsList">
-                            <div class="orderbook-row"><span>-</span><span>-</span></div>
+                    <div class="orderbook-side bids" style="flex: 1;">
+                        <h3 style="color: var(--success);">매수 (BID) -20틱</h3>
+                        <div class="orderbook-header" style="display: flex; justify-content: space-between; padding: 4px 8px; border-bottom: 1px solid var(--border); font-weight: bold; font-size: 0.8rem;">
+                            <span>가격</span><span>수량</span>
+                        </div>
+                        <div id="bidsList" style="max-height: 500px; overflow-y: auto;">
                         </div>
                     </div>
+                </div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 8px; text-align: center;">
+                    총 41개: 현재가 1 + 매도 20틱 + 매수 20틱
                 </div>
             </div>
 
-            <!-- MSK Admin -->
-            <div class="card">
-                <h2>MSK 관리 (Admin)</h2>
+            <!-- Kinesis Admin (미구현) -->
+            <div class="card disabled-section">
+                <h2>Kinesis 관리 (미구현)</h2>
                 <div class="form-group">
                     <label>Admin Lambda Endpoint</label>
-                    <input type="text" id="adminEndpoint" value="https://0eeto6kblk.execute-api.ap-northeast-2.amazonaws.com/admin/Supernoba-admin" placeholder="https://xxx.execute-api.ap-northeast-2.amazonaws.com/admin">
+                    <input type="text" id="adminEndpoint" value="" placeholder="미구현" disabled>
                 </div>
                 <div class="tabs">
-                    <div class="tab active" onclick="setAdminAction('listTopics', this)">토픽 목록</div>
-                    <div class="tab" onclick="setAdminAction('createTopic', this)">토픽 생성</div>
-                    <div class="tab" onclick="setAdminAction('describeTopic', this)">토픽 상세</div>
+                    <div class="tab active">스트림 목록</div>
+                    <div class="tab">스트림 상세</div>
                 </div>
-                <div id="adminCreateFields" style="display: none;">
-                    <div class="inline-form">
-                        <div class="form-group">
-                            <label>토픽명</label>
-                            <input type="text" id="adminTopic" value="test-topic">
-                        </div>
-                        <div class="form-group">
-                            <label>파티션</label>
-                            <input type="number" id="adminPartitions" value="3">
-                        </div>
-                    </div>
-                </div>
-                <input type="hidden" id="adminAction" value="listTopics">
-                <button class="btn btn-primary" onclick="callAdmin()" style="margin-top: 10px;">실행</button>
-                <div id="adminResponse" class="response-box" style="display: none;"></div>
+                <button class="btn btn-secondary" style="margin-top: 10px;" disabled>미구현</button>
             </div>
 
             <!-- 메시지 로그 -->
@@ -498,6 +506,9 @@
     <script>
         let ws = null;
         let orderbooks = {};
+        let subscribedSymbols = [];
+        let activeOrderbookSymbol = null;
+        let heartbeatInterval = null;
 
         // WebSocket 연결
         let connectedEndpoint = '';
@@ -524,12 +535,25 @@
                     updateStatus(true);
                     showConnectionInfo(endpoint, userId);
                     addLog('INFO', '✅ WebSocket 연결됨');
+                    
+                    // 30초 heartbeat 시작
+                    heartbeatInterval = setInterval(() => {
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({ action: 'ping' }));
+                        }
+                    }, 30000);
                 };
 
                 ws.onclose = () => {
                     updateStatus(false);
                     hideConnectionInfo();
                     addLog('INFO', '❌ WebSocket 연결 해제됨');
+                    
+                    // heartbeat 정지
+                    if (heartbeatInterval) {
+                        clearInterval(heartbeatInterval);
+                        heartbeatInterval = null;
+                    }
                 };
 
                 ws.onerror = (error) => {
@@ -550,11 +574,18 @@
         }
 
         function disconnectWS() {
+            if (heartbeatInterval) {
+                clearInterval(heartbeatInterval);
+                heartbeatInterval = null;
+            }
             if (ws) {
                 ws.close();
                 ws = null;
             }
             hideConnectionInfo();
+            subscribedSymbols = [];
+            activeOrderbookSymbol = null;
+            updateOrderbookTabs();
         }
 
         function updateStatus(connected) {
@@ -581,6 +612,11 @@
 
             if (msg.type === 'DEPTH') {
                 updateOrderbook(msg.symbol, msg.data);
+            } else if (msg.subscribed) {
+                // 구독 완료 응답
+                addLog('SUCCESS', `✅ 구독 완료: ${msg.subscribed.join(', ')}`);
+            } else if (msg.message === 'Forbidden') {
+                // ping 응답 (무시)
             }
         }
 
@@ -588,34 +624,117 @@
         function updateOrderbook(symbol, data) {
             orderbooks[symbol] = data;
 
-            const selectedSymbol = document.getElementById('orderbookSymbol').value;
-            if (symbol === selectedSymbol) {
-                renderOrderbook(data);
+            // 활성 심볼이면 렌더링
+            if (symbol === activeOrderbookSymbol) {
+                renderOrderbook(symbol, data);
             }
         }
 
-        function renderOrderbook(data) {
+        // 20개 placeholder 생성 함수
+        function createPlaceholderRows(count, side) {
+            const rows = [];
+            for (let i = 0; i < count; i++) {
+                const tickLabel = side === 'ask' ? `+${count - i}` : `-${i + 1}`;
+                const color = side === 'ask' ? 'var(--danger)' : 'var(--success)';
+                rows.push(`<div class="orderbook-row">
+                    <span style="color: ${color}; min-width: 80px;">0.00</span>
+                    <span style="color: var(--text-muted);">0</span>
+                    <span style="font-size: 0.7rem; color: var(--text-muted);">${tickLabel}</span>
+                </div>`);
+            }
+            return rows.join('');
+        }
+
+        // 초기 placeholder 표시
+        function initOrderbookPlaceholder() {
+            document.getElementById('asksList').innerHTML = createPlaceholderRows(20, 'ask');
+            document.getElementById('bidsList').innerHTML = createPlaceholderRows(20, 'bid');
+            document.getElementById('currentPriceDisplay').innerHTML = '현재가: <strong style="color: var(--text-muted);">0.00</strong>';
+        }
+
+        function renderOrderbook(symbol, data) {
             const asksEl = document.getElementById('asksList');
             const bidsEl = document.getElementById('bidsList');
-
-            if (data.asks && data.asks.length > 0) {
-                asksEl.innerHTML = data.asks.slice(0, 10).map(a => 
-                    `<div class="orderbook-row"><span>${a.price}</span><span>${a.quantity}</span></div>`
-                ).join('');
+            const currentPriceEl = document.getElementById('currentPriceDisplay');
+            
+            // 현재가 표시
+            if (data.currentPrice) {
+                currentPriceEl.innerHTML = `<span style="color: var(--accent);">${symbol}</span> 현재가: <strong>${data.currentPrice.toFixed(2)}</strong>`;
+            } else if (data.asks?.length > 0 && data.bids?.length > 0) {
+                const midPrice = (data.asks[0].price + data.bids[0].price) / 2;
+                currentPriceEl.innerHTML = `<span style="color: var(--accent);">${symbol}</span> 현재가: <strong>${midPrice.toFixed(2)}</strong> <span style="font-size: 0.8rem; color: var(--text-muted);">(추정)</span>`;
+            } else {
+                currentPriceEl.innerHTML = `<span style="color: var(--accent);">${symbol}</span> 현재가: <strong style="color: var(--text-muted);">-</strong>`;
             }
 
-            if (data.bids && data.bids.length > 0) {
-                bidsEl.innerHTML = data.bids.slice(0, 10).map(b =>
-                    `<div class="orderbook-row"><span>${b.price}</span><span>${b.quantity}</span></div>`
-                ).join('');
+            // 매도호가 20틱 (높은 가격이 위, +20 → +1)
+            const asksData = data.asks || [];
+            const asksRows = [];
+            for (let i = 0; i < 20; i++) {
+                const tickIdx = 19 - i; // 역순: +20이 맨 위
+                const a = asksData[tickIdx];
+                const tickLabel = `+${20 - i}`;
+                if (a) {
+                    const barWidth = Math.min(100, (a.quantity / 1000) * 100);
+                    asksRows.push(`<div class="orderbook-row" style="position: relative;">
+                        <div style="position: absolute; right: 0; top: 0; bottom: 0; width: ${barWidth}%; background: rgba(244, 67, 54, 0.2);"></div>
+                        <span style="position: relative; z-index: 1; color: var(--danger); min-width: 80px;">${(a.price || 0).toFixed(2)}</span>
+                        <span style="position: relative; z-index: 1;">${a.quantity || 0}</span>
+                        <span style="font-size: 0.7rem; color: var(--text-muted);">${tickLabel}</span>
+                    </div>`);
+                } else {
+                    asksRows.push(`<div class="orderbook-row">
+                        <span style="color: var(--danger); min-width: 80px;">0.00</span>
+                        <span style="color: var(--text-muted);">0</span>
+                        <span style="font-size: 0.7rem; color: var(--text-muted);">${tickLabel}</span>
+                    </div>`);
+                }
             }
+            asksEl.innerHTML = asksRows.join('');
+
+            // 매수호가 20틱 (높은 가격이 위, -1 → -20)
+            const bidsData = data.bids || [];
+            const bidsRows = [];
+            for (let i = 0; i < 20; i++) {
+                const b = bidsData[i];
+                const tickLabel = `-${i + 1}`;
+                if (b) {
+                    const barWidth = Math.min(100, (b.quantity / 1000) * 100);
+                    bidsRows.push(`<div class="orderbook-row" style="position: relative;">
+                        <div style="position: absolute; left: 0; top: 0; bottom: 0; width: ${barWidth}%; background: rgba(76, 175, 80, 0.2);"></div>
+                        <span style="position: relative; z-index: 1; color: var(--success); min-width: 80px;">${(b.price || 0).toFixed(2)}</span>
+                        <span style="position: relative; z-index: 1;">${b.quantity || 0}</span>
+                        <span style="font-size: 0.7rem; color: var(--text-muted);">${tickLabel}</span>
+                    </div>`);
+                } else {
+                    bidsRows.push(`<div class="orderbook-row">
+                        <span style="color: var(--success); min-width: 80px;">0.00</span>
+                        <span style="color: var(--text-muted);">0</span>
+                        <span style="font-size: 0.7rem; color: var(--text-muted);">${tickLabel}</span>
+                    </div>`);
+                }
+            }
+            bidsEl.innerHTML = bidsRows.join('');
         }
 
-        function selectOrderbookSymbol() {
-            const symbol = document.getElementById('orderbookSymbol').value;
+        function selectOrderbookSymbol(symbol) {
+            activeOrderbookSymbol = symbol;
+            updateOrderbookTabs();
             if (orderbooks[symbol]) {
-                renderOrderbook(orderbooks[symbol]);
+                renderOrderbook(symbol, orderbooks[symbol]);
             }
+        }
+        
+        function updateOrderbookTabs() {
+            const tabsEl = document.getElementById('orderbookTabs');
+            if (subscribedSymbols.length === 0) {
+                tabsEl.innerHTML = '<div class="tab" style="color: var(--text-muted);">구독된 심볼 없음</div>';
+                return;
+            }
+            
+            tabsEl.innerHTML = subscribedSymbols.map(sym => 
+                `<div class="tab ${sym === activeOrderbookSymbol ? 'active' : ''}" onclick="selectOrderbookSymbol('${sym}')">${sym}</div>`
+            ).join('');
         }
 
         // 심볼 구독
@@ -625,10 +744,24 @@
                 return;
             }
 
-            const symbols = document.getElementById('subscribeSymbols').value.split(',').map(s => s.trim());
+            const symbols = document.getElementById('subscribeSymbols').value.split(',').map(s => s.trim().toUpperCase()).filter(s => s);
             ws.send(JSON.stringify({ action: 'subscribe', symbols }));
             addLog('INFO', `구독 요청: ${symbols.join(', ')}`);
-            document.getElementById('subscribedList').textContent = `구독 중: ${symbols.join(', ')}`;
+            
+            // 구독 목록에 추가
+            symbols.forEach(sym => {
+                if (!subscribedSymbols.includes(sym)) {
+                    subscribedSymbols.push(sym);
+                }
+            });
+            
+            // 첫 번째 심볼을 활성화
+            if (!activeOrderbookSymbol && subscribedSymbols.length > 0) {
+                activeOrderbookSymbol = subscribedSymbols[0];
+            }
+            
+            updateOrderbookTabs();
+            document.getElementById('subscribedList').textContent = `구독 중: ${subscribedSymbols.join(', ')}`;
         }
 
         // 주문 제출
@@ -740,6 +873,7 @@
 
         // 초기화
         addLog('INFO', 'Supernoba API Test Console 시작');
+        initOrderbookPlaceholder();
     </script>
 </body>
 </html>

@@ -1,9 +1,16 @@
 import Redis from 'ioredis';
+
 const valkey = new Redis({
   host: process.env.VALKEY_HOST,
-  port: process.env.VALKEY_PORT,
+  port: parseInt(process.env.VALKEY_PORT || '6379'),
+  tls: {},  // ElastiCache TLS 필요
+  connectTimeout: 5000,
+  maxRetriesPerRequest: 1,
 });
 
+valkey.on('error', (err) => {
+  console.error('Redis connection error:', err.message);
+});
 
 // subscribe-handler Lambda
 export const handler = async (event) => {
@@ -11,9 +18,17 @@ export const handler = async (event) => {
   const body = JSON.parse(event.body);
   const { symbols } = body; // ["AAPL", "GOOGL"]
   
-  for (const symbol of symbols) {
-    await valkey.sadd(`symbol:${symbol}:subscribers`, connectionId);
-  }
+  console.log(`Subscribe request from ${connectionId}: ${symbols?.join(', ')}`);
   
-  return { statusCode: 200, body: 'Subscribed' };
+  try {
+    for (const symbol of symbols || []) {
+      const result = await valkey.sadd(`symbol:${symbol}:subscribers`, connectionId);
+      console.log(`Added ${connectionId} to symbol:${symbol}:subscribers, result: ${result}`);
+    }
+    
+    return { statusCode: 200, body: JSON.stringify({ subscribed: symbols }) };
+  } catch (error) {
+    console.error('Redis error:', error.message);
+    return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
+  }
 };
