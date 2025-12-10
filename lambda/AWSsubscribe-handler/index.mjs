@@ -1,9 +1,11 @@
 import Redis from 'ioredis';
 
+const VALKEY_TLS = process.env.VALKEY_TLS === 'true' || true; // 기본값 true (Serverless)
+
 const valkey = new Redis({
-  host: process.env.VALKEY_HOST,
+  host: process.env.VALKEY_HOST || 'master.supernoba-depth-cache.5vrxzz.apn2.cache.amazonaws.com',
   port: parseInt(process.env.VALKEY_PORT || '6379'),
-  tls: {},  // ElastiCache TLS 필요
+  tls: VALKEY_TLS ? {} : undefined,
   connectTimeout: 5000,
   maxRetriesPerRequest: 1,
 });

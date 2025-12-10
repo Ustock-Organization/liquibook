@@ -7,6 +7,7 @@ import { ApiGatewayManagementApiClient, PostToConnectionCommand } from '@aws-sdk
 // 환경변수
 const VALKEY_HOST = process.env.VALKEY_HOST || 'localhost';
 const VALKEY_PORT = parseInt(process.env.VALKEY_PORT || '6379');
+const VALKEY_TLS = process.env.VALKEY_TLS === 'true'; // Explicitly check for 'true' string
 const WEBSOCKET_ENDPOINT = process.env.WEBSOCKET_ENDPOINT;
 const AWS_REGION = process.env.AWS_REGION || 'ap-northeast-2';
 
@@ -15,7 +16,7 @@ const PUBLIC_INTERVAL_MS = 500;   // 비로그인: 0.5초
 const PRIVATE_INTERVAL_MS = 50;   // 로그인: ~50ms (60Hz 근사)
 
 console.log('=== Streaming Server Configuration ===');
-console.log(`Valkey: ${VALKEY_HOST}:${VALKEY_PORT}`);
+console.log(`Valkey: ${VALKEY_HOST}:${VALKEY_PORT} (TLS: ${VALKEY_TLS})`);
 console.log(`WebSocket Endpoint: ${WEBSOCKET_ENDPOINT}`);
 console.log(`Public Interval: ${PUBLIC_INTERVAL_MS}ms`);
 console.log(`Private Interval: ${PRIVATE_INTERVAL_MS}ms`);
@@ -24,7 +25,7 @@ console.log(`Private Interval: ${PRIVATE_INTERVAL_MS}ms`);
 const valkey = new Redis({
   host: VALKEY_HOST,
   port: VALKEY_PORT,
-  tls: VALKEY_HOST !== 'localhost' ? {} : undefined,
+  tls: VALKEY_TLS ? {} : undefined,
   connectTimeout: 5000,
   lazyConnect: false,
 });

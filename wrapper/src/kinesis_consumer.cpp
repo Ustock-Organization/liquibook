@@ -102,6 +102,8 @@ void KinesisConsumer::consumeLoop() {
         bool any_records = false;
         
         for (auto& [shard_id, iterator] : shard_iterators_) {
+            if (!running_) break; // 빠른 종료를 위한 체크
+
             if (iterator.empty()) continue;
             
             Aws::Kinesis::Model::GetRecordsRequest request;
@@ -112,7 +114,10 @@ void KinesisConsumer::consumeLoop() {
             if (!outcome.IsSuccess()) {
                 Logger::error("GetRecords failed for", shard_id, ":", 
                               outcome.GetError().GetMessage());
-                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                // 에러 발생 시 잠시 대기하되 running_ 체크
+                for (int i = 0; i < 5 && running_; ++i) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                }
                 continue;
             }
             
@@ -140,7 +145,7 @@ void KinesisConsumer::consumeLoop() {
         }
         
         // Kinesis는 최소 200ms 간격 권장
-        if (!any_records) {
+        if (!any_records && running_) {
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
         }
     }
