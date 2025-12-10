@@ -186,6 +186,8 @@
   },
   "active": "2df01f10dcd40573",
   "lastOpenFiles": [
+    "doc/OHLCV_dataformat.md",
+    "doc/OHLCV_dataformat",
     "AWS_CONSOLE_SETUP_GUIDE.md",
     "AWS_ARCHITECTURE.md",
     "doc/KINESIS_ARCHITECTURE.md",
@@ -198,7 +200,6 @@
     "streamer/include/websocket_server.h",
     "streamer/include/redis_client.h",
     "streamer/include",
-    "streamer/CMakeLists.txt",
     "streamer/README.md",
     "doc/api/README.md",
     "doc/AWS-MSK-DOC/자습서.md",
