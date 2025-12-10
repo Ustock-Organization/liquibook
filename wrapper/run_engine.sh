@@ -37,11 +37,10 @@ export AWS_REGION="ap-northeast-2"
 export REDIS_HOST="master.supernobaorderbookbackupcache.5vrxzz.apn2.cache.amazonaws.com"
 export REDIS_PORT="6379"
 
-# Depth 캐시 (실시간 호가용, Serverless/TLS 필수)
-# stunnel을 통해 localhost:6380 → AWS Serverless Redis로 터널링
-# stunnel 설정: sudo ./stunnel_setup.sh 실행 필요
-export DEPTH_CACHE_HOST="127.0.0.1"
-export DEPTH_CACHE_PORT="6380"
+# Depth 캐시 (실시간 호가용, Non-TLS)
+# 새 ElastiCache (TLS 비활성화) - stunnel 불필요
+export DEPTH_CACHE_HOST="supernoba-depth-cache.5vrxzz.ng.0001.apn2.cache.amazonaws.com"
+export DEPTH_CACHE_PORT="6379"
 
 # 기타 설정
 export GRPC_PORT="50051"

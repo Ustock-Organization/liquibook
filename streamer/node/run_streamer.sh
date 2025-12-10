@@ -10,10 +10,11 @@ echo "╚═══════════════════════�
 
 # ===== 환경변수 설정 =====
 # ===== 환경변수 설정 =====
-# Streamer는 Real-time Depth Cache (TLS 지원)를 사용
-export VALKEY_HOST="${VALKEY_HOST:-master.supernoba-depth-cache.5vrxzz.apn2.cache.amazonaws.com}"
+# Streamer는 Real-time Depth Cache 사용
+# 새 ElastiCache (Non-TLS)
+export VALKEY_HOST="${VALKEY_HOST:-supernoba-depth-cache.5vrxzz.ng.0001.apn2.cache.amazonaws.com}"
 export VALKEY_PORT="${VALKEY_PORT:-6379}"
-export VALKEY_TLS="${VALKEY_TLS:-true}"  # Depth Cache는 Serverless/TLS 사용
+export VALKEY_TLS="${VALKEY_TLS:-false}"  # Non-TLS 캐시
 export WEBSOCKET_ENDPOINT="${WEBSOCKET_ENDPOINT:-xxxxxxxxxx.execute-api.ap-northeast-2.amazonaws.com/production}"
 export AWS_REGION="${AWS_REGION:-ap-northeast-2}"
 

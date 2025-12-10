@@ -1,9 +1,10 @@
 import Redis from 'ioredis';
 
-const VALKEY_TLS = process.env.VALKEY_TLS === 'true' || true; // 기본값 true (Serverless)
+// 새 ElastiCache (Non-TLS)
+const VALKEY_TLS = process.env.VALKEY_TLS === 'true'; // 기본값 false
 
 const valkey = new Redis({
-  host: process.env.VALKEY_HOST || 'master.supernoba-depth-cache.5vrxzz.apn2.cache.amazonaws.com',
+  host: process.env.VALKEY_HOST || 'supernoba-depth-cache.5vrxzz.ng.0001.apn2.cache.amazonaws.com',
   port: parseInt(process.env.VALKEY_PORT || '6379'),
   tls: VALKEY_TLS ? {} : undefined,
   connectTimeout: 5000,

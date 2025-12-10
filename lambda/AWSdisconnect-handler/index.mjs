@@ -1,10 +1,13 @@
 // disconnect-handler Lambda
 import Redis from 'ioredis';
 
+// 새 ElastiCache (Non-TLS)
+const VALKEY_TLS = process.env.VALKEY_TLS === 'true';
+
 const valkey = new Redis({
-  host: process.env.VALKEY_HOST,
+  host: process.env.VALKEY_HOST || 'supernoba-depth-cache.5vrxzz.ng.0001.apn2.cache.amazonaws.com',
   port: parseInt(process.env.VALKEY_PORT || '6379'),
-  tls: {},  // ElastiCache TLS 필요
+  tls: VALKEY_TLS ? {} : undefined,
 });
 
 export const handler = async (event) => {
