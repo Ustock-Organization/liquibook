@@ -116,6 +116,7 @@ void MarketDataHandler::on_trade(const OrderBook* book,
 void MarketDataHandler::on_depth_change(const OrderBook* book,
                                          const BookDepth* depth) {
     std::string symbol = book->symbol();
+    Logger::debug("on_depth_change called for:", symbol);
     
     // 컴팩트 포맷: {"e":"d","s":"SYM","t":123,"b":[[p,q],...],"a":[[p,q],...]}
     nlohmann::json depth_json;
