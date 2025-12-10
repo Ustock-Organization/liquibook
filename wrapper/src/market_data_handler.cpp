@@ -154,7 +154,14 @@ void MarketDataHandler::on_depth_change(const OrderBook* book,
     // Valkey에 depth 캐시 저장 (Streaming Server가 읽어감)
     if (redis_ && redis_->isConnected()) {
         std::string key = "depth:" + symbol;
-        redis_->set(key, depth_json.dump());
+        bool saved = redis_->set(key, depth_json.dump());
+        if (saved) {
+            Logger::debug("Depth saved to Valkey:", key);
+        } else {
+            Logger::warn("Failed to save depth to Valkey:", key);
+        }
+    } else {
+        Logger::debug("Depth cache not connected, skipping save for:", symbol);
     }
     
     // 참고: Kinesis 발행 제거됨 - Streaming Server 방식으로 전환
