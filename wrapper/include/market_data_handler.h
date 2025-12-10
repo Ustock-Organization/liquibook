@@ -11,6 +11,8 @@
 
 namespace aws_wrapper {
 
+class RedisClient;  // forward declaration
+
 using OrderBook = liquibook::book::DepthOrderBook<OrderPtr>;
 using BookDepth = liquibook::book::Depth<>;
 
@@ -21,7 +23,7 @@ class MarketDataHandler
     , public liquibook::book::BboListener<OrderBook>
 {
 public:
-    explicit MarketDataHandler(IProducer* producer);
+    explicit MarketDataHandler(IProducer* producer, RedisClient* redis = nullptr);
     
     // === OrderListener ===
     void on_accept(const OrderPtr& order) override;
@@ -52,6 +54,7 @@ public:
 
 private:
     IProducer* producer_;
+    RedisClient* redis_;
 };
 
 } // namespace aws_wrapper

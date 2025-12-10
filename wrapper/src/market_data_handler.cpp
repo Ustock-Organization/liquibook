@@ -1,4 +1,5 @@
 #include "market_data_handler.h"
+#include "redis_client.h"
 #include "iproducer.h"
 #include "logger.h"
 #include "metrics.h"
@@ -7,9 +8,9 @@
 
 namespace aws_wrapper {
 
-MarketDataHandler::MarketDataHandler(IProducer* producer)
-    : producer_(producer) {
-    Logger::info("MarketDataHandler initialized");
+MarketDataHandler::MarketDataHandler(IProducer* producer, RedisClient* redis)
+    : producer_(producer), redis_(redis) {
+    Logger::info("MarketDataHandler initialized, Redis:", redis_ ? "connected" : "none");
 }
 
 void MarketDataHandler::on_accept(const OrderPtr& order) {
@@ -150,9 +151,14 @@ void MarketDataHandler::on_depth_change(const OrderBook* book,
     depth_json["t"] = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
     
-    if (producer_) {
-        producer_->publishDepth(symbol, depth_json);
+    // Valkey에 depth 캐시 저장 (Streaming Server가 읽어감)
+    if (redis_ && redis_->isConnected()) {
+        std::string key = "depth:" + symbol;
+        redis_->set(key, depth_json.dump());
     }
+    
+    // 참고: Kinesis 발행 제거됨 - Streaming Server 방식으로 전환
+    // producer_->publishDepth(symbol, depth_json);  // DEPRECATED
 }
 
 void MarketDataHandler::on_bbo_change(const OrderBook* book,

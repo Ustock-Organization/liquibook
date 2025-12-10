@@ -100,8 +100,8 @@ int main(int argc, char* argv[]) {
         KafkaProducer producer(kafka_brokers);
 #endif
         
-        // 핸들러 및 엔진 생성
-        MarketDataHandler handler(&producer);
+        // 핸들러 및 엔진 생성 (Valkey depth 캐싱 활성화)
+        MarketDataHandler handler(&producer, &redis);
         EngineCore engine(&handler);
         
         // === 시작 시 Redis에서 스냅샷 복원 ===
