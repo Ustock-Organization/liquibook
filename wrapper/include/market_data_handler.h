@@ -13,8 +13,9 @@ namespace aws_wrapper {
 
 class RedisClient;  // forward declaration
 
-using OrderBook = liquibook::book::DepthOrderBook<OrderPtr>;
-using BookDepth = liquibook::book::Depth<>;
+// Depth levels: 10 bid + 10 ask
+using OrderBook = liquibook::book::DepthOrderBook<OrderPtr, 10>;
+using BookDepth = liquibook::book::Depth<10>;
 
 class MarketDataHandler
     : public liquibook::book::OrderListener<OrderPtr>

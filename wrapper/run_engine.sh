@@ -7,12 +7,21 @@
 set -e
 
 # ========================================
-# 모드 선택 (기본값: Kinesis)
+# 옵션 파싱
 # ========================================
 USE_KINESIS=true
-if [ "$1" == "--kafka" ]; then
-    USE_KINESIS=false
-fi
+DEBUG_MODE=false
+
+for arg in "$@"; do
+    case $arg in
+        --kafka)
+            USE_KINESIS=false
+            ;;
+        --debug)
+            DEBUG_MODE=true
+            ;;
+    esac
+done
 
 if [ "$USE_KINESIS" == "true" ]; then
     echo "╔═══════════════════════════════════════════════════════════╗"
@@ -44,7 +53,11 @@ export DEPTH_CACHE_PORT="6379"
 
 # 기타 설정
 export GRPC_PORT="50051"
-export LOG_LEVEL="DEBUG"
+if [ "$DEBUG_MODE" == "true" ]; then
+    export LOG_LEVEL="DEBUG"
+else
+    export LOG_LEVEL="INFO"
+fi
 
 if [ "$USE_KINESIS" == "true" ]; then
     # ========= Kinesis 환경변수 =========
