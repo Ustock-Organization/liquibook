@@ -153,6 +153,8 @@ void MarketDataHandler::on_depth_change(const OrderBook* book,
         std::chrono::system_clock::now().time_since_epoch()).count();
     
     // Valkey에 depth 캐시 저장 (Streaming Server가 읽어감)
+    Logger::debug("Depth cache check - redis_:", redis_ ? "exists" : "null", 
+                  "connected:", (redis_ && redis_->isConnected()) ? "yes" : "no");
     if (redis_ && redis_->isConnected()) {
         std::string key = "depth:" + symbol;
         bool saved = redis_->set(key, depth_json.dump());
