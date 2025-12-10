@@ -78,23 +78,29 @@ async function broadcastDepth(symbol, subscribers) {
 
 // 비로그인 사용자 푸시 루프 (500ms)
 async function publicPushLoop() {
+  let loopCount = 0;
   while (true) {
     try {
+      loopCount++;
       // 활성 심볼 목록 조회 (KEYS 대신 SET 사용 - Serverless 호환)
       const activeSymbols = await valkey.smembers('active:symbols');
+      
+      // 디버그: 루프 상태 출력 (10회마다)
+      if (loopCount % 10 === 1) {
+        console.log(`[DEBUG] Loop #${loopCount}, activeSymbols: ${JSON.stringify(activeSymbols)}`);
+      }
       
       for (const symbol of activeSymbols) {
         const subscribers = await valkey.smembers(`symbol:${symbol}:subscribers`);
         
         if (subscribers.length > 0) {
+          console.log(`[DEBUG] ${symbol}: ${subscribers.length} subscribers, broadcasting...`);
           const sent = await broadcastDepth(symbol, subscribers);
-          if (sent > 0) {
-            console.log(`[PUBLIC] ${symbol}: ${sent}/${subscribers.length} sent`);
-          }
+          console.log(`[PUBLIC] ${symbol}: ${sent}/${subscribers.length} sent`);
         }
       }
     } catch (error) {
-      console.error('Public push error:', error.message);
+      console.error('Public push error:', error.message, error.stack);
     }
     
     await new Promise(resolve => setTimeout(resolve, PUBLIC_INTERVAL_MS));
