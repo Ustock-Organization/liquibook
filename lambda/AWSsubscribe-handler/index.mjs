@@ -18,55 +18,53 @@ valkey.on('error', (err) => {
 /**
  * subscribe-handler Lambda
  * 
- * 요청 형식:
- * - Main 구독: {"action":"subscribe","main":"TEST"}
- * - Sub 구독: {"action":"subscribe","sub":["AAPL","GOOGL"]}
- * - 복합: {"action":"subscribe","main":"TEST","sub":["AAPL","GOOGL"]}
- * 
- * 한 클라이언트(connectionId)는:
- * - Main: 1개만 (변경 시 이전 main 자동 해제)
- * - Sub: 무제한
+ * 신구 형식 모두 지원:
+ * - 구버전: {"action":"subscribe","symbols":["TEST","AAPL"]}
+ * - 신버전: {"action":"subscribe","main":"TEST","sub":["AAPL"]}
  */
 export const handler = async (event) => {
   const connectionId = event.requestContext.connectionId;
   const body = JSON.parse(event.body);
-  const { main, sub } = body;
   
-  console.log(`Subscribe request from ${connectionId}: main=${main}, sub=${JSON.stringify(sub)}`);
+  // 신구 형식 모두 지원
+  let { main, sub, symbols } = body;
+  
+  // 구버전: symbols 배열 → 첫 번째가 main
+  if (!main && symbols && Array.isArray(symbols)) {
+    main = symbols[0];
+    sub = symbols.slice(1);
+  }
+  
+  console.log(`Subscribe: ${connectionId} main=${main}, sub=${JSON.stringify(sub || [])}`);
   
   try {
-    // === Main 구독 처리 (1개만) ===
     if (main) {
       // 기존 main 구독 해제
       const prevMain = await valkey.get(`conn:${connectionId}:main`);
       if (prevMain && prevMain !== main) {
+        await valkey.srem(`symbol:${prevMain}:subscribers`, connectionId);
         await valkey.srem(`symbol:${prevMain}:main`, connectionId);
-        console.log(`Released prev main subscription: ${prevMain}`);
       }
       
-      // 새 main 등록
-      await valkey.set(`conn:${connectionId}:main`, main);
+      // 구버전 키도 함께 설정 (Streamer 호환)
+      await valkey.sadd(`symbol:${main}:subscribers`, connectionId);
       await valkey.sadd(`symbol:${main}:main`, connectionId);
+      await valkey.set(`conn:${connectionId}:main`, main);
       await valkey.sadd('active:symbols', main);
-      console.log(`Main subscribed: ${main}`);
     }
     
-    // === Sub 구독 처리 (무제한) ===
     for (const symbol of sub || []) {
+      await valkey.sadd(`symbol:${symbol}:subscribers`, connectionId);
       await valkey.sadd(`symbol:${symbol}:sub`, connectionId);
       await valkey.sadd('active:symbols', symbol);
-      console.log(`Sub subscribed: ${symbol}`);
     }
     
     return { 
       statusCode: 200, 
-      body: JSON.stringify({ 
-        main: main || null, 
-        sub: sub || [] 
-      }) 
+      body: JSON.stringify({ main: main || null, sub: sub || [] }) 
     };
   } catch (error) {
-    console.error('Redis error:', error.message);
+    console.error('Error:', error.message);
     return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
   }
 };

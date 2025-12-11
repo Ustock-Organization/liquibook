@@ -27,16 +27,9 @@
             padding: 20px;
         }
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
+        .container { max-width: 1200px; margin: 0 auto; }
 
-        header {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-
+        header { text-align: center; margin-bottom: 20px; }
         header h1 {
             font-size: 1.8rem;
             background: linear-gradient(135deg, var(--accent), #a371f7);
@@ -53,13 +46,29 @@
             padding: 10px;
             background: var(--bg-card);
             border-radius: 8px;
+            flex-wrap: wrap;
         }
 
-        .status-dot {
-            width: 10px; height: 10px;
-            border-radius: 50%;
-            background: var(--danger);
+        .connect-form { display: flex; gap: 10px; flex-wrap: wrap; }
+        .connect-form input {
+            padding: 8px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text);
+            font-size: 0.8rem;
+            min-width: 300px;
         }
+        .connect-form button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .btn-connect { background: var(--success); color: #000; }
+        .btn-disconnect { background: var(--danger); color: #fff; }
+
+        .status-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); }
         .status-dot.connected { background: var(--success); }
 
         .main-layout {
@@ -68,29 +77,25 @@
             gap: 20px;
         }
 
-        /* 왼쪽: 호가창 (Main) */
-        .orderbook-panel {
+        @media (max-width: 768px) {
+            .main-layout { grid-template-columns: 1fr; }
+        }
+
+        .panel {
             background: var(--bg-card);
             border: 1px solid var(--border);
             border-radius: 12px;
             padding: 16px;
         }
 
-        .orderbook-panel h2 {
-            font-size: 1rem;
-            margin-bottom: 12px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
+        .panel h2 { font-size: 1rem; margin-bottom: 12px; }
 
-        .main-symbol-select {
+        .symbol-input {
             display: flex;
             gap: 8px;
             margin-bottom: 12px;
         }
-
-        .main-symbol-select input {
+        .symbol-input input {
             flex: 1;
             padding: 8px 12px;
             background: var(--bg-input);
@@ -98,14 +103,19 @@
             border-radius: 6px;
             color: var(--text);
         }
-
-        .main-symbol-select button {
+        .symbol-input button {
             padding: 8px 16px;
-            background: var(--accent);
-            color: #000;
             border: none;
             border-radius: 6px;
             cursor: pointer;
+        }
+        .btn-main { background: var(--accent); color: #000; }
+        .btn-sub { background: var(--success); color: #000; }
+
+        .badge {
+            margin-bottom: 10px;
+            color: var(--accent);
+            font-size: 0.85rem;
         }
 
         .orderbook {
@@ -142,60 +152,14 @@
             border-top: 1px solid var(--border);
             border-bottom: 1px solid var(--border);
         }
-
-        .spread-row .price {
-            font-size: 1.2rem;
-            font-weight: bold;
-        }
-
-        .spread-row .change {
-            font-size: 0.9rem;
-            margin-left: 10px;
-        }
-
+        .spread-row .price { font-size: 1.2rem; font-weight: bold; }
+        .spread-row .change { font-size: 0.9rem; margin-left: 10px; }
         .change.up { color: var(--success); }
         .change.down { color: var(--danger); }
 
-        /* 오른쪽: 전광판 (Sub) */
-        .ticker-panel {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 16px;
-        }
-
-        .ticker-panel h2 {
-            font-size: 1rem;
-            margin-bottom: 12px;
-        }
-
-        .sub-symbol-input {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 16px;
-        }
-
-        .sub-symbol-input input {
-            flex: 1;
-            padding: 8px 12px;
-            background: var(--bg-input);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            color: var(--text);
-        }
-
-        .sub-symbol-input button {
-            padding: 8px 16px;
-            background: var(--success);
-            color: #000;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-        }
-
         .ticker-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
             gap: 12px;
         }
 
@@ -204,53 +168,21 @@
             border: 1px solid var(--border);
             border-radius: 8px;
             padding: 16px;
+            position: relative;
             transition: transform 0.2s;
         }
-
-        .ticker-card:hover {
-            transform: translateY(-2px);
-        }
-
-        .ticker-card .symbol {
-            font-size: 1.1rem;
-            font-weight: bold;
-            margin-bottom: 8px;
-        }
-
-        .ticker-card .price-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: baseline;
-        }
-
-        .ticker-card .current-price {
-            font-size: 1.4rem;
-            font-weight: bold;
-        }
-
+        .ticker-card:hover { transform: translateY(-2px); }
+        .ticker-card .symbol { font-size: 1rem; font-weight: bold; margin-bottom: 8px; }
+        .ticker-card .price-row { display: flex; justify-content: space-between; align-items: baseline; }
+        .ticker-card .current-price { font-size: 1.2rem; font-weight: bold; }
         .ticker-card .change-badge {
             padding: 4px 8px;
             border-radius: 4px;
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             font-weight: 500;
         }
-
-        .ticker-card .change-badge.up {
-            background: rgba(63, 185, 80, 0.2);
-            color: var(--success);
-        }
-
-        .ticker-card .change-badge.down {
-            background: rgba(248, 81, 73, 0.2);
-            color: var(--danger);
-        }
-
-        .ticker-card .prev-change {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            margin-top: 8px;
-        }
-
+        .ticker-card .change-badge.up { background: rgba(63, 185, 80, 0.2); color: var(--success); }
+        .ticker-card .change-badge.down { background: rgba(248, 81, 73, 0.2); color: var(--danger); }
         .ticker-card .remove-btn {
             position: absolute;
             top: 8px;
@@ -261,52 +193,37 @@
             cursor: pointer;
             font-size: 1rem;
         }
-
-        .ticker-card {
-            position: relative;
-        }
-
         .empty-ticker {
             text-align: center;
             color: var(--text-muted);
             padding: 40px;
+            grid-column: 1 / -1;
         }
 
-        /* 연결 설정 */
-        .connect-form {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 10px;
-        }
-
-        .connect-form input {
-            flex: 1;
-            padding: 8px;
-            background: var(--bg-input);
+        .log-panel {
+            margin-top: 20px;
+            background: var(--bg-card);
             border: 1px solid var(--border);
-            border-radius: 4px;
-            color: var(--text);
-            font-size: 0.8rem;
+            border-radius: 8px;
+            padding: 12px;
         }
-
-        .connect-form button {
-            padding: 8px 16px;
-            border: none;
+        .log-container {
+            background: var(--bg-input);
             border-radius: 4px;
-            cursor: pointer;
+            height: 150px;
+            overflow-y: auto;
+            padding: 8px;
+            font-family: monospace;
+            font-size: 0.75rem;
         }
-
-        .btn-connect { background: var(--success); color: #000; }
-        .btn-disconnect { background: var(--danger); color: #fff; }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>🚀 Supernoba Main/Sub 실시간 데이터</h1>
+            <h1>🚀 Supernoba Main/Sub 전광판</h1>
         </header>
 
-        <!-- 연결 상태 바 -->
         <div class="status-bar">
             <div class="connect-form">
                 <input type="text" id="wsEndpoint" value="wss://l2ptm85wub.execute-api.ap-northeast-2.amazonaws.com/production/" placeholder="WebSocket Endpoint">
@@ -320,16 +237,14 @@
         </div>
 
         <div class="main-layout">
-            <!-- 왼쪽: 호가창 (Main 구독 - 1개만) -->
-            <div class="orderbook-panel">
-                <h2>📊 호가창 (Main)</h2>
-                <div class="main-symbol-select">
+            <!-- 호가창 (Main) -->
+            <div class="panel">
+                <h2>📊 호가창 (Main - 1개만)</h2>
+                <div class="symbol-input">
                     <input type="text" id="mainSymbol" value="TEST" placeholder="심볼">
-                    <button onclick="subscribeMain()">구독</button>
+                    <button class="btn-main" onclick="subscribeMain()">구독</button>
                 </div>
-                <div id="mainSymbolBadge" style="margin-bottom: 10px; color: var(--accent); font-size: 0.85rem;">
-                    구독 중: 없음
-                </div>
+                <div class="badge" id="mainBadge">구독 중: 없음</div>
                 <div class="orderbook">
                     <div class="ob-header">
                         <span>가격</span>
@@ -345,17 +260,25 @@
                 </div>
             </div>
 
-            <!-- 오른쪽: 전광판 (Sub 구독 - 무제한) -->
-            <div class="ticker-panel">
-                <h2>📈 전광판 (Sub)</h2>
-                <div class="sub-symbol-input">
-                    <input type="text" id="subSymbols" placeholder="심볼 (콤마 구분: AAPL,GOOGL,TSLA)">
-                    <button onclick="subscribeSub()">추가</button>
+            <!-- 전광판 (Sub) -->
+            <div class="panel">
+                <h2>📈 전광판 (Sub - 무제한)</h2>
+                <div class="symbol-input">
+                    <input type="text" id="subSymbols" placeholder="콤마 구분: AAPL,GOOGL,TSLA">
+                    <button class="btn-sub" onclick="subscribeSub()">추가</button>
                 </div>
                 <div id="tickerGrid" class="ticker-grid">
-                    <div class="empty-ticker">심볼을 추가하세요</div>
+                    <div class="empty-ticker">Sub 심볼을 추가하세요</div>
                 </div>
             </div>
+        </div>
+
+        <div class="log-panel">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                <span>메시지 로그</span>
+                <button onclick="document.getElementById('logContainer').innerHTML=''" style="font-size: 0.75rem; padding: 2px 8px;">지우기</button>
+            </div>
+            <div id="logContainer" class="log-container"></div>
         </div>
     </div>
 
@@ -363,23 +286,30 @@
         let ws = null;
         let currentMainSymbol = null;
         let subSymbols = new Set();
-        let tickerData = {};  // {symbol: {p, c, yc}}
+        let tickerData = {};
 
-        // WebSocket 연결
+        function log(msg) {
+            const el = document.getElementById('logContainer');
+            const time = new Date().toLocaleTimeString();
+            el.innerHTML += `<div>[${time}] ${msg}</div>`;
+            el.scrollTop = el.scrollHeight;
+        }
+
         function connect() {
             const endpoint = document.getElementById('wsEndpoint').value;
             if (!endpoint) return;
 
+            log('연결 시도...');
             ws = new WebSocket(endpoint);
 
             ws.onopen = () => {
                 updateStatus(true);
-                console.log('WebSocket connected');
+                log('✅ 연결됨');
             };
 
             ws.onclose = () => {
                 updateStatus(false);
-                console.log('WebSocket disconnected');
+                log('❌ 연결 해제');
             };
 
             ws.onmessage = (event) => {
@@ -387,16 +317,13 @@
                     const msg = JSON.parse(event.data);
                     handleMessage(msg);
                 } catch (e) {
-                    console.log('Raw:', event.data);
+                    log(`Raw: ${event.data}`);
                 }
             };
         }
 
         function disconnect() {
-            if (ws) {
-                ws.close();
-                ws = null;
-            }
+            if (ws) { ws.close(); ws = null; }
             currentMainSymbol = null;
             subSymbols.clear();
             tickerData = {};
@@ -409,100 +336,79 @@
             document.getElementById('statusText').textContent = connected ? 'Connected' : 'Disconnected';
         }
 
-        // 메시지 처리
         function handleMessage(msg) {
             if (msg.e === 'd') {
-                // Main: Depth 데이터
+                // Depth (Main)
+                log(`DEPTH ${msg.s}: ${msg.b?.length || 0} bids, ${msg.a?.length || 0} asks`);
                 renderOrderbook(msg);
             } else if (msg.e === 't') {
-                // Sub: Ticker 데이터
-                tickerData[msg.s] = {
-                    p: msg.p,
-                    c: msg.c,
-                    yc: msg.yc
-                };
+                // Ticker (Sub)
+                log(`TICKER ${msg.s}: ${msg.p} (${msg.c}%)`);
+                tickerData[msg.s] = { p: msg.p, c: msg.c, yc: msg.yc };
                 renderTickers();
+            } else if (msg.message === 'Forbidden') {
+                // ping 응답 무시
+            } else {
+                log(JSON.stringify(msg));
             }
         }
 
-        // Main 구독
         function subscribeMain() {
             if (!ws || ws.readyState !== WebSocket.OPEN) {
                 alert('먼저 연결하세요');
                 return;
             }
-
             const symbol = document.getElementById('mainSymbol').value.toUpperCase();
             if (!symbol) return;
 
-            ws.send(JSON.stringify({
-                action: 'subscribe',
-                main: symbol
-            }));
-
+            // 신버전 형식으로 전송
+            ws.send(JSON.stringify({ action: 'subscribe', main: symbol }));
             currentMainSymbol = symbol;
             updateMainBadge();
+            log(`Main 구독: ${symbol}`);
         }
 
-        // Sub 구독 추가
         function subscribeSub() {
             if (!ws || ws.readyState !== WebSocket.OPEN) {
                 alert('먼저 연결하세요');
                 return;
             }
-
             const input = document.getElementById('subSymbols').value.toUpperCase();
             if (!input) return;
 
             const symbols = input.split(',').map(s => s.trim()).filter(s => s);
             
-            ws.send(JSON.stringify({
-                action: 'subscribe',
-                sub: symbols
-            }));
-
-            symbols.forEach(s => {
-                subSymbols.add(s);
-                tickerData[s] = tickerData[s] || { p: 0, c: 0, yc: 0 };
-            });
-            
+            // 신버전 형식으로 전송
+            ws.send(JSON.stringify({ action: 'subscribe', sub: symbols }));
+            symbols.forEach(s => { subSymbols.add(s); tickerData[s] = tickerData[s] || { p: 0, c: 0, yc: 0 }; });
             document.getElementById('subSymbols').value = '';
             renderTickers();
+            log(`Sub 구독: ${symbols.join(', ')}`);
         }
 
-        // Sub 심볼 제거
         function removeSub(symbol) {
             subSymbols.delete(symbol);
             delete tickerData[symbol];
             renderTickers();
-            // TODO: 서버에 unsubscribe 요청
         }
 
         function updateMainBadge() {
-            document.getElementById('mainSymbolBadge').textContent = 
-                currentMainSymbol ? `구독 중: ${currentMainSymbol}` : '구독 중: 없음';
+            document.getElementById('mainBadge').textContent = currentMainSymbol ? `구독 중: ${currentMainSymbol}` : '구독 중: 없음';
         }
 
-        // 호가창 렌더링
         function renderOrderbook(data) {
-            const asksEl = document.getElementById('asksList');
-            const bidsEl = document.getElementById('bidsList');
             const priceEl = document.getElementById('currentPrice');
             const changeEl = document.getElementById('changeRate');
-
-            // 현재가 및 변동률
-            if (data.p) {
-                priceEl.textContent = data.p.toLocaleString();
-            }
+            
+            if (data.p) priceEl.textContent = data.p.toLocaleString();
             if (data.c !== undefined) {
                 const sign = data.c >= 0 ? '+' : '';
                 changeEl.textContent = `${sign}${data.c.toFixed(2)}%`;
                 changeEl.className = `change ${data.c >= 0 ? 'up' : 'down'}`;
             }
 
-            // Ask (매도)
             const asks = (data.a || []).slice(0, 10).reverse();
-            asksEl.innerHTML = asks.map(a => `
+            document.getElementById('asksList').innerHTML = asks.map(a => `
                 <div class="ob-row">
                     <span class="price ask">${a[0].toLocaleString()}</span>
                     <span class="qty">${a[1]}</span>
@@ -510,9 +416,8 @@
                 </div>
             `).join('') || '<div class="ob-row"><span>-</span></div>';
 
-            // Bid (매수)
             const bids = (data.b || []).slice(0, 10);
-            bidsEl.innerHTML = bids.map(b => `
+            document.getElementById('bidsList').innerHTML = bids.map(b => `
                 <div class="ob-row">
                     <span class="price bid">${b[0].toLocaleString()}</span>
                     <span class="qty">${b[1]}</span>
@@ -521,35 +426,29 @@
             `).join('') || '<div class="ob-row"><span>-</span></div>';
         }
 
-        // 전광판 렌더링
         function renderTickers() {
             const grid = document.getElementById('tickerGrid');
-            
             if (subSymbols.size === 0) {
-                grid.innerHTML = '<div class="empty-ticker">심볼을 추가하세요</div>';
+                grid.innerHTML = '<div class="empty-ticker">Sub 심볼을 추가하세요</div>';
                 return;
             }
 
             grid.innerHTML = Array.from(subSymbols).map(symbol => {
-                const data = tickerData[symbol] || { p: 0, c: 0, yc: 0 };
-                const isUp = data.c >= 0;
-                const sign = isUp ? '+' : '';
-                
+                const d = tickerData[symbol] || { p: 0, c: 0, yc: 0 };
+                const isUp = d.c >= 0;
                 return `
                     <div class="ticker-card">
                         <button class="remove-btn" onclick="removeSub('${symbol}')">×</button>
                         <div class="symbol">${symbol}</div>
                         <div class="price-row">
-                            <span class="current-price">${data.p ? data.p.toLocaleString() : '-'}</span>
-                            <span class="change-badge ${isUp ? 'up' : 'down'}">${sign}${data.c.toFixed(2)}%</span>
+                            <span class="current-price">${d.p ? d.p.toLocaleString() : '-'}</span>
+                            <span class="change-badge ${isUp ? 'up' : 'down'}">${isUp ? '+' : ''}${d.c.toFixed(2)}%</span>
                         </div>
-                        <div class="prev-change">전일: ${data.yc >= 0 ? '+' : ''}${data.yc.toFixed(2)}%</div>
                     </div>
                 `;
             }).join('');
         }
 
-        // 초기화
         renderTickers();
     </script>
 </body>
