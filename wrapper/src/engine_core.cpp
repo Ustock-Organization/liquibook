@@ -31,9 +31,7 @@ EngineCore::OrderBookPtr EngineCore::getOrCreateBook(const std::string& symbol) 
     
     // 리스너 등록
     book->set_order_listener(handler_);
-    // TradeListener는 OrderBook 타입이 달라서 직접 캐스트
-    // DepthOrderBook은 OrderBook에서 상속받지만 템플릿 타입이 다름
-    // 대신 on_trade 콜백은 MarketDataHandler에서 직접 처리
+    book->set_trade_listener(handler_);  // Trade Listener 추가!
     book->set_depth_listener(handler_);
     book->set_bbo_listener(handler_);
     
