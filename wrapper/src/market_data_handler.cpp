@@ -183,19 +183,30 @@ void MarketDataHandler::on_depth_change(const OrderBook* book,
     depth_json["yc"] = std::round(day.prev_change_rate * 100) / 100.0;
     depth_json["p"] = day.last_price;  // 현재가도 추가
     
+    // DEBUG: 저장 전 depth_json 내용 출력
+    Logger::info("DEPTH_DEBUG:", symbol, 
+                 "c=", day.change_rate, 
+                 "yc=", day.prev_change_rate, 
+                 "p=", day.last_price,
+                 "json_c=", depth_json["c"].dump(),
+                 "json_yc=", depth_json["yc"].dump(),
+                 "json_p=", depth_json["p"].dump());
+    
     // Valkey에 depth 캐시 저장 (Streaming Server가 읽어감)
     Logger::debug("Depth cache check - redis_:", redis_ ? "exists" : "null", 
                   "connected:", (redis_ && redis_->isConnected()) ? "yes" : "no");
     if (redis_ && redis_->isConnected()) {
         std::string key = "depth:" + symbol;
-        bool saved = redis_->set(key, depth_json.dump());
+        std::string json_str = depth_json.dump();
+        Logger::info("DEPTH_SAVE:", key, "=", json_str.substr(0, 200));  // 앞 200자만
+        bool saved = redis_->set(key, json_str);
         if (saved) {
-            Logger::debug("Depth saved to Valkey:", key);
+            Logger::info("Depth saved OK:", key);
         } else {
             Logger::warn("Failed to save depth to Valkey:", key);
         }
     } else {
-        Logger::debug("Depth cache not connected, skipping save for:", symbol);
+        Logger::warn("Depth cache not connected, skipping save for:", symbol);
     }
     
     // 참고: Kinesis 발행 제거됨 - Streaming Server 방식으로 전환
