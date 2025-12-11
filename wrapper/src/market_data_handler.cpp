@@ -38,8 +38,9 @@ void MarketDataHandler::on_fill(const OrderPtr& order,
                                  const OrderPtr& matched_order,
                                  liquibook::book::Quantity fill_qty,
                                  liquibook::book::Price fill_price) {
+    std::string symbol = order->symbol();
     Logger::info("FILL:", order->order_id(), "matched:", matched_order->order_id(),
-                 "qty:", fill_qty, "price:", fill_price);
+                 "qty:", fill_qty, "price:", fill_price, "symbol:", symbol);
     
     // 양쪽 주문의 filled_qty 업데이트
     liquibook::book::Cost fill_cost = fill_qty * fill_price;
@@ -47,6 +48,33 @@ void MarketDataHandler::on_fill(const OrderPtr& order,
     matched_order->fill(fill_qty, fill_cost, 0);
     
     Metrics::instance().incrementFillsPublished();
+    
+    // === DayData 업데이트 (on_trade 대체) ===
+    checkDayReset(symbol);
+    DayData& day = getDayData(symbol);
+    
+    // 시가 설정 (당일 첫 체결)
+    if (day.open_price == 0) {
+        day.open_price = fill_price;
+        day.high_price = fill_price;
+        day.low_price = fill_price;
+        Logger::info("First trade of day for", symbol, "open:", fill_price);
+    }
+    
+    // 고가/저가 업데이트
+    if (fill_price > day.high_price) day.high_price = fill_price;
+    if (fill_price < day.low_price) day.low_price = fill_price;
+    
+    // 현재가 및 변동률 계산
+    day.last_price = fill_price;
+    if (day.open_price > 0) {
+        day.change_rate = ((double)fill_price - (double)day.open_price) / (double)day.open_price * 100.0;
+    }
+    
+    Logger::info("DayData updated:", symbol, "price:", fill_price, "change:", day.change_rate, "%");
+    
+    // Ticker 캐시 업데이트 (Sub 데이터용)
+    updateTickerCache(symbol, fill_price);
     
     if (producer_) {
         // 매수자/매도자 결정

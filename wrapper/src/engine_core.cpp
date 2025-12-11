@@ -29,9 +29,8 @@ EngineCore::OrderBookPtr EngineCore::getOrCreateBook(const std::string& symbol) 
     auto book = std::make_shared<OrderBook>();
     book->set_symbol(symbol);
     
-    // 리스너 등록
+    // 리스너 등록 (TradeListener는 타입 불일치로 on_fill에서 처리)
     book->set_order_listener(handler_);
-    book->set_trade_listener(handler_);  // Trade Listener 추가!
     book->set_depth_listener(handler_);
     book->set_bbo_listener(handler_);
     
