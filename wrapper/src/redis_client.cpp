@@ -152,4 +152,57 @@ std::vector<std::string> RedisClient::keys(const std::string& pattern) {
     return result;
 }
 
+bool RedisClient::lpush(const std::string& key, const std::string& value) {
+    if (!context_) return false;
+    
+    auto reply = static_cast<redisReply*>(
+        redisCommand(context_, "LPUSH %s %s", key.c_str(), value.c_str()));
+    
+    if (!reply) {
+        Logger::error("Redis LPUSH failed:", context_->errstr);
+        return false;
+    }
+    
+    bool success = (reply->type != REDIS_REPLY_ERROR);
+    freeReplyObject(reply);
+    return success;
+}
+
+bool RedisClient::ltrim(const std::string& key, long start, long stop) {
+    if (!context_) return false;
+    
+    auto reply = static_cast<redisReply*>(
+        redisCommand(context_, "LTRIM %s %ld %ld", key.c_str(), start, stop));
+    
+    if (!reply) {
+        Logger::error("Redis LTRIM failed:", context_->errstr);
+        return false;
+    }
+    
+    bool success = (reply->type != REDIS_REPLY_ERROR);
+    freeReplyObject(reply);
+    return success;
+}
+
+std::vector<std::string> RedisClient::lrange(const std::string& key, long start, long stop) {
+    std::vector<std::string> result;
+    if (!context_) return result;
+    
+    auto reply = static_cast<redisReply*>(
+        redisCommand(context_, "LRANGE %s %ld %ld", key.c_str(), start, stop));
+    
+    if (!reply) return result;
+    
+    if (reply->type == REDIS_REPLY_ARRAY) {
+        for (size_t i = 0; i < reply->elements; ++i) {
+            if (reply->element[i]->type == REDIS_REPLY_STRING) {
+                result.emplace_back(reply->element[i]->str, reply->element[i]->len);
+            }
+        }
+    }
+    
+    freeReplyObject(reply);
+    return result;
+}
+
 } // namespace aws_wrapper

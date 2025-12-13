@@ -7,11 +7,16 @@
 #include <nlohmann/json.hpp>
 #include <cmath>
 
+#ifdef USE_KINESIS
+#include "dynamodb_client.h"
+#endif
+
 namespace aws_wrapper {
 
-MarketDataHandler::MarketDataHandler(IProducer* producer, RedisClient* redis)
-    : producer_(producer), redis_(redis) {
-    Logger::info("MarketDataHandler initialized, Redis:", redis_ ? "connected" : "none");
+MarketDataHandler::MarketDataHandler(IProducer* producer, RedisClient* redis, DynamoDBClient* dynamodb)
+    : producer_(producer), redis_(redis), dynamodb_(dynamodb) {
+    Logger::info("MarketDataHandler initialized, Redis:", redis_ ? "connected" : "none",
+                 "DynamoDB:", dynamodb_ ? "connected" : "none");
 }
 
 void MarketDataHandler::on_accept(const OrderPtr& order) {
@@ -67,22 +72,74 @@ void MarketDataHandler::on_fill(const OrderPtr& order,
     
     // 현재가 및 변동률 계산
     day.last_price = fill_price;
+    day.volume += fill_qty;  // 거래량 누적
     if (day.open_price > 0) {
         day.change_rate = ((double)fill_price - (double)day.open_price) / (double)day.open_price * 100.0;
     }
     
-    Logger::info("DayData updated:", symbol, "price:", fill_price, "change:", day.change_rate, "%");
+    Logger::info("DayData updated:", symbol, "price:", fill_price, "vol:", day.volume, "change:", day.change_rate, "%");
+    
+    // === OHLC 캐시 저장 (당일만) ===
+    auto now = std::chrono::system_clock::now();
+    auto epoch_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now.time_since_epoch()).count();
+    auto epoch_sec = epoch_ms / 1000;
+    
+    if (redis_ && redis_->isConnected()) {
+        nlohmann::json ohlc;
+        ohlc["o"] = day.open_price;
+        ohlc["h"] = day.high_price;
+        ohlc["l"] = day.low_price;
+        ohlc["c"] = day.last_price;
+        ohlc["v"] = day.volume;
+        ohlc["change"] = std::round(day.change_rate * 100) / 100.0;
+        ohlc["t"] = epoch_sec;  // Unix timestamp (초)
+        redis_->set("ohlc:" + symbol, ohlc.dump());
+        Logger::debug("OHLC saved:", symbol);
+    }
+    
+    // === 체결 내역 캐시 저장 ===
+    const std::string& buyer_id = order->is_buy() ? 
+        order->user_id() : matched_order->user_id();
+    const std::string& seller_id = order->is_buy() ? 
+        matched_order->user_id() : order->user_id();
+    
+    if (redis_ && redis_->isConnected()) {
+        nlohmann::json trade;
+        trade["t"] = epoch_sec;  // Unix timestamp (초)
+        trade["p"] = fill_price;
+        trade["q"] = fill_qty;
+        trade["b"] = buyer_id;
+        trade["s"] = seller_id;
+        trade["bo"] = order->is_buy() ? order->order_id() : matched_order->order_id();
+        trade["so"] = order->is_buy() ? matched_order->order_id() : order->order_id();
+        
+        redis_->lpush("trades:" + symbol, trade.dump());
+        redis_->ltrim("trades:" + symbol, 0, 99999);  // 최대 10만개 유지
+        Logger::debug("Trade saved to cache:", symbol);
+    }
+    
+    // === DynamoDB 체결 내역 저장 ===
+#ifdef USE_KINESIS
+    if (dynamodb_ && dynamodb_->isConnected()) {
+        const std::string& bo = order->is_buy() ? order->order_id() : matched_order->order_id();
+        const std::string& so = order->is_buy() ? matched_order->order_id() : order->order_id();
+        
+        bool db_saved = dynamodb_->putTrade(symbol, epoch_sec, fill_price, fill_qty,
+                                             buyer_id, seller_id, bo, so);
+        if (db_saved) {
+            Logger::info("DynamoDB trade saved:", symbol, "price:", fill_price, "qty:", fill_qty);
+        } else {
+            Logger::warn("DynamoDB trade save FAILED:", symbol);
+        }
+    }
+#endif
     
     // Ticker 캐시 업데이트 (Sub 데이터용)
     updateTickerCache(symbol, fill_price);
     
+    // Kinesis 발행 유지 (체결 알림용)
     if (producer_) {
-        // 매수자/매도자 결정
-        const std::string& buyer_id = order->is_buy() ? 
-            order->user_id() : matched_order->user_id();
-        const std::string& seller_id = order->is_buy() ? 
-            matched_order->user_id() : order->user_id();
-        
         producer_->publishFill(order->symbol(), order->order_id(),
                                 matched_order->order_id(), buyer_id, seller_id,
                                 fill_qty, fill_price);

@@ -29,8 +29,9 @@ if(USE_KINESIS)
     
     find_package(aws-cpp-sdk-core CONFIG REQUIRED)
     find_package(aws-cpp-sdk-kinesis CONFIG REQUIRED)
+    find_package(aws-cpp-sdk-dynamodb CONFIG REQUIRED)
     add_definitions(-DUSE_KINESIS)
-    message(STATUS "Building with Kinesis support")
+    message(STATUS "Building with Kinesis + DynamoDB support")
 else()
     find_package(RdKafka CONFIG REQUIRED)
     message(STATUS "Building with Kafka support")
@@ -76,6 +77,7 @@ if(USE_KINESIS)
     set(STREAM_SOURCES
         src/kinesis_consumer.cpp
         src/kinesis_producer.cpp
+        src/dynamodb_client.cpp
     )
 else()
     set(STREAM_SOURCES
@@ -106,6 +108,7 @@ if(USE_KINESIS)
     target_link_libraries(matching_engine PRIVATE
         aws-cpp-sdk-core
         aws-cpp-sdk-kinesis
+        aws-cpp-sdk-dynamodb
     )
 else()
     target_link_libraries(matching_engine PRIVATE

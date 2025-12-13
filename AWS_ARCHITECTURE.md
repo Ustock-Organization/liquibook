@@ -163,12 +163,33 @@ sequenceDiagram
 
 ## Redis 키 구조
 
+### Depth Cache (실시간 데이터)
+
 | 키 패턴 | 타입 | 용도 |
 |---------|------|------|
-| `snapshot:SYMBOL` | String | 오더북 스냅샷 (Backup Cache) |
-| `depth:SYMBOL` | String | 실시간 호가 (Depth Cache) |
+| `depth:SYMBOL` | String | 실시간 호가 10단계 (Main 구독) |
+| `ticker:SYMBOL` | String | 간략 티커 (Sub 구독) |
+| `ohlc:SYMBOL` | String | 당일 OHLCV 데이터 |
+| `trades:SYMBOL` | List | 체결 내역 (최대 10만건) |
 | `active:symbols` | Set | 활성 심볼 목록 |
-| `symbol:SYMBOL:subscribers` | Set | 심볼별 WebSocket 구독자 |
+
+### 구독자 관리
+
+| 키 패턴 | 타입 | 용도 |
+|---------|------|------|
+| `symbol:SYMBOL:main` | Set | Main(호가) 구독자 connectionId |
+| `symbol:SYMBOL:sub` | Set | Sub(전광판) 구독자 connectionId |
+| `conn:CONNID:main` | String | 해당 연결의 Main 구독 심볼 |
+| `ws:CONNID` | String | WebSocket 연결 정보 (userId, connectedAt) |
+| `user:USERID:connections` | Set | 사용자별 연결 목록 |
+
+### Backup Cache (영구 데이터)
+
+| 키 패턴 | 타입 | 용도 |
+|---------|------|------|
+| `snapshot:SYMBOL` | String | 오더북 스냅샷 |
+| `prev:SYMBOL` | String | 전일 OHLC (자정 리셋 시 저장) |
+
 
 ---
 
@@ -188,11 +209,13 @@ sequenceDiagram
 | 함수명 | 트리거 | 역할 |
 |--------|--------|------|
 | `Supernoba-order-router` | API Gateway REST | 주문 접수 → Kinesis 발행 |
-| `depth-stream-public` | Kinesis `supernoba-depth` | 호가 → NAT Gateway → WebSocket 푸시 |
-| `user-stream-handler` | Kinesis `fills`, `order-status` | 체결/상태 → 개인 WebSocket |
-| `connect-handler` | API Gateway `$connect` | WebSocket 연결 관리 |
-| `subscribe-handler` | API Gateway `subscribe` | 심볼 구독 처리 |
-| `disconnect-handler` | API Gateway `$disconnect` | 연결 해제 정리 |
+| `connect-handler` | API Gateway `$connect` | WebSocket 연결, user:connections 관리 |
+| `subscribe-handler` | API Gateway `subscribe` | Main/Sub 구독 처리 |
+| `disconnect-handler` | API Gateway `$disconnect` | 연결 해제, 구독 정리 |
+| `trades-backup-handler` | EventBridge (10분) | 체결 내역 → S3 + DynamoDB 백업 |
+| `chart-data-handler` | API Gateway HTTP `/chart` | 1분봉 → 상위 타임프레임 집계 API |
+| `candle-aggregator` | EventBridge (매 분) | trades → 1분봉 집계 → DynamoDB |
+| `daily-backup-handler` | EventBridge (00:00 KST) | 전일 OHLC → S3 + DynamoDB |
 
 ### 요약 기술 스택
 
@@ -202,9 +225,102 @@ sequenceDiagram
 | 라우팅 | Lambda (Order Router), ElastiCache Valkey |
 | 메시지 큐 | **Amazon Kinesis Data Streams** (4개 스트림) |
 | 매칭 엔진 | Liquibook C++ + AWS SDK on EC2 |
-| 실시간 스트리밍 | Kinesis → Lambda → **NAT Gateway** → API Gateway → Client |
+| 실시간 스트리밍 | Streamer (Node.js) → API Gateway → Client |
+| 데이터 백업 | Lambda → S3, DynamoDB |
 
 ---
+
+## 차트 데이터 아키텍처
+
+> **원칙**: 서버에서 타임프레임별로 미리 집계(Aggregated)된 데이터를 클라이언트에 제공.  
+> 엔진에서는 캔들 집계를 하지 않고, 별도 Lambda가 담당.
+
+### 데이터 흐름
+
+```mermaid
+flowchart LR
+    subgraph Engine["C++ 매칭 엔진"]
+        Trade[체결 발생]
+    end
+    
+    subgraph Valkey["ElastiCache Valkey"]
+        Trades["trades:SYMBOL\n(체결 리스트)"]
+        OHLC["ohlc:SYMBOL\n(당일 OHLCV)"]
+    end
+    
+    subgraph Lambda["Lambda 함수들"]
+        Backup["trades-backup-handler\n(10분마다)"]
+        Chart["chart-data-handler\n(REST API)"]
+        Aggregator["candle-aggregator\n(캔들 집계)"]
+    end
+    
+    subgraph Storage["저장소"]
+        S3["S3\ntrades/SYMBOL/date/"]
+        DDB["DynamoDB\ncandle_history"]
+    end
+    
+    Trade --> Trades
+    Trade --> OHLC
+    Trades --> Backup
+    Backup --> S3
+    Backup --> DDB
+    S3 --> Aggregator
+    Aggregator --> DDB
+    DDB --> Chart
+    Valkey --> Chart
+    
+    style Engine fill:#00599C,color:white
+    style Valkey fill:#4CAF50,color:white
+```
+
+### API 응답 형식 (lightweight-charts 호환)
+
+```json
+{
+  "symbol": "TEST",
+  "interval": "15m",
+  "data": [
+    {"time": 1702306800, "open": 150, "high": 155, "low": 148, "close": 152, "volume": 1200}
+  ]
+}
+```
+
+### 타임프레임별 집계 전략 (Option B)
+
+> **원칙**: 1분봉만 DynamoDB에 저장. 상위 타임프레임은 쿼리 시 1분봉 합산.
+
+| 타임프레임                 | 집계 방법                            | 저장       |
+| --------------------- | -------------------------------- | -------- |
+| **1분**                | `candle-aggregator` Lambda (매 분) | DynamoDB |
+| 3분, 5분, 10분, 15분, 30분 | `chart-data-handler`에서 1분봉 합산    | ❌        |
+| **1시간, 4시간**          | 1분봉 60개/240개 합산                  | ❌        |
+| **1일**                | `ohlc:SYMBOL` 자정 저장분 사용          | DynamoDB |
+
+### Lambda 함수
+
+| 함수명 | 트리거 | 역할 |
+|--------|--------|------|
+| `candle-aggregator` | EventBridge `cron(* * * * ? *)` | trades:* → 1분봉 → DynamoDB |
+| `chart-data-handler` | API Gateway HTTP `/chart` | 1분봉 조회 → 상위 타임프레임 집계 → 응답 |
+
+### DynamoDB 테이블: `candle_history`
+
+| 키 | 타입 | 예시 |
+|----|------|------|
+| **PK** | String | `CANDLE#TEST#1m` |
+| **SK** | Number | `1702306800` (Unix timestamp) |
+
+```json
+{
+  "pk": "CANDLE#TEST#1m",
+  "sk": 1702306800,
+  "symbol": "TEST",
+  "interval": "1m",
+  "time": 1702306800,
+  "open": 150, "high": 152, "low": 149, "close": 151,
+  "volume": 100
+}
+```
 
 ---
 
@@ -857,72 +973,6 @@ cd ~/liquibook/wrapper
 | `AWS_REGION` | `ap-northeast-2` | AWS 리전 |
 | `GRPC_PORT` | `50051` | gRPC 서버 포트 |
 | `LOG_LEVEL` | `DEBUG` / `INFO` | 로그 레벨 |
-
----
-
-## 17. 현재 시스템 아키텍처
-
-```mermaid
-flowchart TD
-    subgraph Client["클라이언트 iOS/Web"]
-        App[클라이언트 앱]
-    end
-    
-    subgraph AWS["AWS Cloud"]
-        APIG[AWS API Gateway<br/>WebSocket]
-        
-        subgraph Lambda["람다"]
-            OrderHandler[orderHandler Lambda<br/>주문 접수 → MSK 발행]
-            StreamHandler[orderbookStreamHandler Lambda<br/>fills/depth 구독 → WS 푸시]
-        end
-        
-        subgraph MSK["AWS MSK supernobamsk"]
-            orders[orders]
-            fills[fills]
-            trades[trades]
-            depth[depth]
-            order_status[order_status]
-        end
-        
-        subgraph EC2["Liquibook Matching Engine EC2"]
-            Consumer[KafkaConsumer<br/>orders 구독]
-            Engine[EngineCore<br/>Liquibook]
-            Producer[KafkaProducer<br/>fills 발행]
-            MDH[MarketDataHandler<br/>→ depth, trades, order_status]
-            RedisC[RedisClient<br/>스냅샷 저장]
-        end
-        
-        Redis[(ElastiCache Redis<br/>supernobaorderbookbackupcache<br/>오더북 스냅샷 저장/복구)]
-    end
-    
-    App --> APIG
-    APIG --> OrderHandler
-    APIG <--> StreamHandler
-    
-    OrderHandler --> orders
-    orders --> Consumer
-    Consumer --> Engine
-    Engine --> Producer
-    Engine --> MDH
-    
-    Producer --> fills
-    MDH --> trades
-    MDH --> depth
-    MDH --> order_status
-    
-    fills --> StreamHandler
-    depth --> StreamHandler
-    
-    Engine --> RedisC
-    RedisC --> Redis
-    
-    style orders fill:#FF9900,color:white
-    style fills fill:#FF9900,color:white
-    style trades fill:#FF9900,color:white
-    style depth fill:#FF9900,color:white
-    style order_status fill:#FF9900,color:white
-    style Engine fill:#00599C,color:white
-```
 
 ---
 

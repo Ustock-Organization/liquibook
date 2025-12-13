@@ -14,7 +14,8 @@
 
 namespace aws_wrapper {
 
-class RedisClient;  // forward declaration
+class RedisClient;      // forward declaration
+class DynamoDBClient;   // forward declaration
 
 // Depth levels: 10 bid + 10 ask
 using OrderBook = liquibook::book::DepthOrderBook<OrderPtr, 10>;
@@ -26,6 +27,7 @@ struct DayData {
     uint64_t high_price = 0;    // 당일 고가
     uint64_t low_price = 0;     // 당일 저가
     uint64_t last_price = 0;    // 현재가 (마지막 체결가)
+    uint64_t volume = 0;        // 당일 거래량
     double change_rate = 0.0;   // 당일 변동률 (%)
     double prev_change_rate = 0.0;  // 전일 변동률 (%)
     int trading_day = 0;        // 거래일 (YYYYMMDD)
@@ -38,7 +40,8 @@ class MarketDataHandler
     , public liquibook::book::BboListener<OrderBook>
 {
 public:
-    explicit MarketDataHandler(IProducer* producer, RedisClient* redis = nullptr);
+    explicit MarketDataHandler(IProducer* producer, RedisClient* redis = nullptr,
+                                DynamoDBClient* dynamodb = nullptr);
     
     // === OrderListener ===
     void on_accept(const OrderPtr& order) override;
@@ -75,6 +78,7 @@ public:
 private:
     IProducer* producer_;
     RedisClient* redis_;
+    DynamoDBClient* dynamodb_;
     std::unordered_map<std::string, DayData> symbol_day_data_;
     
     void updateTickerCache(const std::string& symbol, uint64_t price);

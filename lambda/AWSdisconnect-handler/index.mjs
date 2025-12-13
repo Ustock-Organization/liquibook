@@ -41,6 +41,18 @@ export const handler = async (event) => {
     } while (cursor !== '0');
     
     // === 연결 정보 정리 ===
+    const connInfo = await valkey.get(`ws:${connectionId}`);
+    if (connInfo) {
+      try {
+        const { userId } = JSON.parse(connInfo);
+        if (userId) {
+          await valkey.srem(`user:${userId}:connections`, connectionId);
+          console.log(`Removed from user:${userId}:connections`);
+        }
+      } catch (e) {
+        console.warn('Failed to parse connection info:', e.message);
+      }
+    }
     await valkey.del(`ws:${connectionId}`);
     
     return { statusCode: 200, body: 'Disconnected' };

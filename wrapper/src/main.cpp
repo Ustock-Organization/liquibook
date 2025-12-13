@@ -12,6 +12,7 @@
 #ifdef USE_KINESIS
 #include "kinesis_consumer.h"
 #include "kinesis_producer.h"
+#include "dynamodb_client.h"
 #include <aws/core/Aws.h>
 #else
 #include "kafka_consumer.h"
@@ -106,13 +107,28 @@ int main(int argc, char* argv[]) {
 #ifdef USE_KINESIS
         // Kinesis Producer 생성
         KinesisProducer producer(aws_region);
+        
+        // DynamoDB Client 생성 (체결 내역 저장용)
+        const auto dynamodb_table = Config::get("DYNAMODB_TRADE_TABLE", "trade_history");
+        DynamoDBClient dynamodb(aws_region, dynamodb_table);
+        bool dynamodb_connected = dynamodb.connect();
+        if (!dynamodb_connected) {
+            Logger::warn("DynamoDB connection failed - continuing without trade history");
+        } else {
+            Logger::info("DynamoDB connected:", dynamodb_table);
+        }
 #else
         // Kafka Producer 생성
         KafkaProducer producer(kafka_brokers);
 #endif
         
-        // 핸들러 및 엔진 생성 (depth_cache를 전달)
+        // 핸들러 및 엔진 생성
+#ifdef USE_KINESIS
+        MarketDataHandler handler(&producer, depth_connected ? &depth_cache : nullptr, 
+                                  dynamodb_connected ? &dynamodb : nullptr);
+#else
         MarketDataHandler handler(&producer, depth_connected ? &depth_cache : nullptr);
+#endif
         EngineCore engine(&handler);
         
         // === 시작 시 Redis에서 스냅샷 복원 ===

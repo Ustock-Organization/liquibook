@@ -24,6 +24,11 @@ public:
     bool exists(const std::string& key);
     std::vector<std::string> keys(const std::string& pattern);
     
+    // 리스트 연산 (체결 내역용)
+    bool lpush(const std::string& key, const std::string& value);
+    bool ltrim(const std::string& key, long start, long stop);
+    std::vector<std::string> lrange(const std::string& key, long start, long stop);
+    
     // 스냅샷 전용
     bool saveSnapshot(const std::string& symbol, const std::string& data);
     std::optional<std::string> loadSnapshot(const std::string& symbol);
