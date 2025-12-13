@@ -1,8 +1,8 @@
 # AWS Supernoba 아키텍처
 
-Amazon Kinesis + Valkey 기반 실시간 매칭 엔진 인프라 (2025-12-11 운영 중)
+Amazon Kinesis + Valkey 기반 실시간 매칭 엔진 인프라 (2025-12-13 최신)
 
-> **Depth 데이터는 Kinesis를 거치지 않고 Valkey에 직접 저장** → Streamer가 읽어서 WebSocket으로 푸시
+> **핵심 원칙**: Kinesis는 주문/체결용만 사용. Depth 데이터는 Valkey에 직접 저장 → Streamer가 폴링하여 WebSocket 푸시.
 
 ---
 
@@ -22,53 +22,62 @@ flowchart TD
             Connect[connect-handler]
             Subscribe[subscribe-handler]
             Disconnect[disconnect-handler]
+            ChartAPI[chart-data-handler]
+            Backup[trades-backup<br/>10분마다]
         end
         
-        subgraph Kinesis["Amazon Kinesis (주문/체결만)"]
+        subgraph Kinesis["Amazon Kinesis"]
             K1[supernoba-orders<br/>4 shards]
-            K2[supernoba-order-status]
-            K3[supernoba-fills]
         end
         
-        subgraph EC2_Engine["EC2: Matching Engine<br/>ip-172-31-47-97"]
-            Engine[Liquibook C++]
+        subgraph EC2_Engine["EC2: Matching Engine"]
+            Engine[Liquibook C++<br/>+ Lua Script]
         end
         
-        subgraph EC2_Streamer["EC2: Streaming Server<br/>ip-172-31-57-219"]
-            Streamer[Node.js Streamer]
+        subgraph EC2_Streamer["EC2: Streaming Server"]
+            Fast[50ms 폴링<br/>실시간 사용자]
+            Slow[500ms 폴링<br/>익명 사용자]
         end
         
         subgraph ElastiCache["ElastiCache Valkey"]
-            BackupCache[(Backup Cache<br/>snapshot:SYMBOL)]
-            DepthCache[(Depth Cache<br/>depth:SYMBOL)]
+            DepthCache["depth:SYMBOL<br/>ticker:SYMBOL"]
+            CandleCache["candle:1m:SYMBOL<br/>candle:closed:*"]
+            BackupCache["snapshot:SYMBOL<br/>prev:SYMBOL"]
+        end
+        
+        subgraph Storage["영구 저장소"]
+            S3[(S3)]
+            DDB[(DynamoDB)]
         end
     end
     
     App <-->|WSS| APIG
-    APIG --> Router
-    APIG --> Connect
-    APIG --> Subscribe
-    APIG --> Disconnect
+    APIG --> Router & Connect & Subscribe & Disconnect
     
     Router -->|주문| K1
     K1 --> Engine
-    Engine -->|상태| K2
-    Engine -->|체결| K3
+    Engine ==>|"Lua Script"| CandleCache
+    Engine ==>|depth 저장| DepthCache
     Engine -->|스냅샷| BackupCache
-    Engine ==>|"depth 직접 저장<br/>(Kinesis X)"| DepthCache
     
     Subscribe -->|구독자 등록| DepthCache
-    DepthCache ==>|"500ms 폴링"| Streamer
-    Streamer -->|PostToConnection| APIG
-    APIG -->|depth 푸시| App
+    DepthCache ==> Fast
+    CandleCache ==> Fast
+    Fast -->|캐시| Slow
+    Fast & Slow -->|PostToConnection| APIG
+    APIG -->|depth+candle 푸시| App
     
-    style DepthCache fill:#4CAF50,color:white
-    style Streamer fill:#2196F3,color:white
+    CandleCache -->|10분| Backup
+    Backup --> S3 & DDB
+    ChartAPI -->|Hot| CandleCache
+    ChartAPI -->|Cold| S3
+    
+    style DepthCache fill:#DC382D,color:white
+    style CandleCache fill:#DC382D,color:white
     style Engine fill:#00599C,color:white
+    style Fast fill:#2196F3,color:white
+    style Slow fill:#2196F3,color:white
 ```
-
-> **핵심**: `depth` 데이터는 **Kinesis를 거치지 않고** C++ 엔진이 Valkey에 직접 저장.  
-> Node.js Streamer가 Depth Cache를 폴링하여 WebSocket 클라이언트에 푸시.
 
 ---
 
@@ -84,34 +93,148 @@ sequenceDiagram
     participant Streamer as Node.js Streamer
 
     Client->>APIG: WebSocket 연결
-    Client->>APIG: {"action":"subscribe","symbols":["TEST"]}
+    Client->>APIG: {"action":"subscribe","main":"TEST","sub":["AAPL"]}
     APIG->>Subscribe: subscribe route
-    Subscribe->>Valkey: SADD active:symbols TEST
-    Subscribe->>Valkey: SADD symbol:TEST:subscribers {connId}
+    Subscribe->>Valkey: 구독 심볼 등록 (subscribed:symbols)
+    Subscribe->>Valkey: 구독자 등록 (symbol:TEST:main)
+    Subscribe->>Valkey: 서브 구독자 등록 (symbol:AAPL:sub)
     
     Note over Engine: 주문 처리 → 호가 변경
-    Engine->>Valkey: SET depth:TEST {json}
+    Engine->>Valkey: 호가 저장 (depth:TEST)
+    Engine->>Valkey: 시세 저장 (ticker:TEST)
     
     loop 매 500ms
-        Streamer->>Valkey: SMEMBERS active:symbols
-        Streamer->>Valkey: GET depth:TEST
+        Streamer->>Valkey: 구독 심볼 조회 (subscribed:symbols)
+        Streamer->>Valkey: 호가 조회 (Main 구독자용)
+        Streamer->>Valkey: 시세 조회 (Sub 구독자용)
         Streamer->>APIG: PostToConnection
-        APIG->>Client: depth 데이터 푸시
+        APIG->>Client: 데이터 푸시
     end
 ```
 
 ---
 
-## ElastiCache 구성 (Dual Redis)
+## 차트 데이터 아키텍처
 
-| 캐시 | 엔드포인트 | 용도 | TLS |
-|------|-----------|------|-----|
-| **Backup Cache** | `master.supernobaorderbookbackupcache.5vrxzz.apn2.cache.amazonaws.com:6379` | 오더북 스냅샷 | Optional |
-| **Depth Cache** | `supernoba-depth-cache.5vrxzz.ng.0001.apn2.cache.amazonaws.com:6379` | 실시간 호가 | ❌ Disabled |
+> **Valkey 중심 설계**: C++ Engine에서 Lua Script로 캔들 집계, Lambda는 백그라운드 백업만 담당
+
+```mermaid
+flowchart TD
+    subgraph Engine["C++ Matching Engine"]
+        Trade[체결 발생]
+    end
+    
+    subgraph Valkey["Valkey (실시간)"]
+        ActiveCandle["candle:1m:SYMBOL<br/>(활성 캔들)"]
+        ClosedCandles["candle:closed:1m:SYMBOL<br/>(마감 캔들 버퍼)"]
+        Trades["trades:SYMBOL<br/>(체결 버퍼)"]
+    end
+    
+    subgraph Streamer["Node.js Streamer"]
+        Fast["50ms 폴링<br/>(실시간 사용자)"]
+        Slow["500ms 폴링<br/>(익명 사용자)"]
+    end
+    
+    subgraph Lambda["Lambda (백그라운드)"]
+        Backup["trades-backup<br/>10분마다"]
+        ChartAPI["chart-data-handler"]
+    end
+    
+    subgraph Storage["영구 저장소"]
+        S3["S3"]
+        DDB["DynamoDB"]
+    end
+    
+    Trade -->|Lua Script| ActiveCandle
+    Trade -->|저장| Trades
+    
+    ActiveCandle -->|50ms| Fast
+    Fast -->|캐시| Slow
+    Fast & Slow -->|WebSocket| WS[클라이언트]
+    
+    ClosedCandles -->|10분| Backup
+    Backup --> S3 & DDB
+    
+    ChartAPI -->|Hot| Valkey
+    ChartAPI -->|Cold| S3
+    
+    style Valkey fill:#DC382D,color:white
+    style Engine fill:#00599C,color:white
+    style Storage fill:#4CAF50,color:white
+```
+
+### 캔들 처리 흐름
+
+| 단계 | 컴포넌트 | 지연시간 |
+|------|----------|----------|
+| 체결 → 캔들 집계 | C++ Engine (Lua Script) | ~1ms |
+| 캔들 → 클라이언트 | Streamer (50ms/500ms) | 50~500ms |
+| 캔들 → 영구 저장 | Lambda (10분마다) | ~분 단위 |
+
+### 타임프레임별 전략
+
+| 타임프레임 | 집계 위치 | 저장 |
+|------------|----------|------|
+| **1분** | Valkey (Lua Script) | Hot: Valkey, Cold: S3 |
+| 3분, 5분, 15분, 30분 | Streamer 롤업 | Valkey |
+| **1시간, 4시간, 1일** | Lambda 롤업 | DynamoDB + S3 |
 
 ---
 
-## Depth 데이터 포맷
+## Kinesis 스트림 구성
+
+| 스트림 | Shards | 용도 | 방향 |
+|--------|--------|------|------|
+| `supernoba-orders` | 4 | 주문 입력 | Lambda → Engine |
+| `supernoba-fills` | 2 | 체결 알림 | Engine → Lambda (알림용) |
+| `supernoba-order-status` | 2 | 주문 상태 변경 | Engine → Lambda |
+
+> ⚠️ `supernoba-depth` 스트림은 **사용하지 않음**. Depth는 Valkey 직접 저장.
+
+---
+
+## ElastiCache 구성 (Dual Valkey)
+
+| 캐시 | 엔드포인트 | 용도 | TLS |
+|------|-----------|------|-----|
+| **Backup Cache** | `master.supernobaorderbookbackupcache.5vrxzz.apn2.cache.amazonaws.com:6379` | 오더북 스냅샷, 전일 데이터 | ❌ |
+| **Depth Cache** | `supernoba-depth-cache.5vrxzz.ng.0001.apn2.cache.amazonaws.com:6379` | 실시간 호가, 구독자 관리 | ❌ |
+
+---
+
+## Redis 키 구조
+
+### Depth Cache (실시간 데이터)
+
+| 키 패턴 | 타입 | 용도 | 생성 위치 |
+|---------|------|------|----------|
+| `depth:SYMBOL` | String | 실시간 호가 10단계 (Main) | C++ `market_data_handler.cpp` |
+| `ticker:SYMBOL` | String | 간략 시세 (Sub) | C++ `updateTickerCache()` |
+| `active:symbols` | Set | 거래 가능 종목 목록 (Admin 관리) | `symbol-manager` |
+| `subscribed:symbols` | Set | 현재 구독자 있는 심볼 (자동) | `subscribe-handler`, `disconnect-handler` |
+| `symbol:SYMBOL:main` | Set | Main 구독자 connectionId | `subscribe-handler` |
+| `symbol:SYMBOL:sub` | Set | Sub 구독자 connectionId | `subscribe-handler` |
+| `symbol:SYMBOL:subscribers` | Set | 레거시 구독자 (호환용) | `subscribe-handler` |
+| `conn:CONNID:main` | String | 연결별 Main 구독 심볼 | `subscribe-handler` |
+| `ws:CONNID` | String | WebSocket 연결 정보 | `connect-handler` |
+| `user:USERID:connections` | Set | 사용자별 연결 목록 | `connect-handler` |
+| `candle:1m:SYMBOL` | Hash | 활성 1분봉 (o,h,l,c,v,t) | C++ Lua Script |
+| `candle:5m:SYMBOL` | Hash | 활성 5분봉 | Streamer 롤업 |
+| `candle:closed:1m:SYMBOL` | List | 마감 1분봉 버퍼 (백업 전) | C++ Lua Script |
+| `trades:SYMBOL` | List | 체결 버퍼 (TTL 24h) | C++ Engine |
+
+### Backup Cache (영구 데이터)
+
+| 키 패턴 | 타입 | 용도 | 생성 위치 |
+|---------|------|------|----------|
+| `snapshot:SYMBOL` | String | 오더북 스냅샷 | C++ `redis_client.cpp` |
+| `prev:SYMBOL` | String | 전일 OHLC | C++ `savePrevDayData()` |
+
+---
+
+## 데이터 포맷
+
+### Depth (호가창)
 
 ```json
 {"e":"d","s":"TEST","t":1733896438267,"b":[[150,30],[149,20]],"a":[[151,30],[152,25]]}
@@ -125,889 +248,116 @@ sequenceDiagram
 | `b` | Bids `[[price, qty], ...]` (최대 10개) |
 | `a` | Asks `[[price, qty], ...]` (최대 10개) |
 
+### Ticker (전광판)
+
+```json
+{"e":"t","s":"TEST","t":1733896438267,"p":150,"c":2.5,"yc":-1.2}
+```
+
+| 필드 | 설명 |
+|------|------|
+| `e` | 이벤트 타입 ("t" = ticker) |
+| `p` | 현재가 |
+| `c` | 금일 등락률 (%) |
+| `yc` | 전일 등락률 (%) |
+
 ---
 
 ## Lambda 함수
 
 | 함수명 | 트리거 | 역할 |
 |--------|--------|------|
-| `Supernoba-order-router` | API Gateway REST | 주문 → Kinesis |
-| `connect-handler` | `$connect` | 연결 정보 저장 |
-| `subscribe-handler` | `subscribe` | 심볼 구독 등록 |
-| `disconnect-handler` | `$disconnect` | 구독 정리 |
+| `Supernoba-order-router` | API Gateway REST | 주문 검증 → Kinesis (`active:symbols` 확인) |
+| `symbol-manager` | API Gateway REST | 종목 관리 (조회/추가/삭제) |
+| `connect-handler` | `$connect` | 연결 정보 저장, `ws:*` 키 생성 |
+| `subscribe-handler` | `subscribe` | Main/Sub 구독 등록, `subscribed:symbols` 추가 |
+| `disconnect-handler` | `$disconnect` | 구독 정리, `subscribed:symbols` 제거 |
+| `trades-backup-handler` | EventBridge (10분) | 체결 → S3 + DynamoDB |
+| `chart-data-handler` | API Gateway HTTP | 1분봉 → 상위 타임프레임 집계 |
+| `candle-aggregator` | EventBridge (매 분) | trades → 1분봉 → DynamoDB |
 
 ---
 
 ## EC2 인스턴스
 
-| 역할 | Private IP | 상태 |
-|------|------------|------|
-| **Matching Engine** | 172.31.47.97 | ✅ 운영 중 |
-| **Streaming Server** | 172.31.57.219 | ✅ 운영 중 |
+| 역할 | Private IP | 타입 | 상태 |
+|------|------------|------|------|
+| **Matching Engine** | 172.31.47.97 | t2.medium | ✅ 운영 중 |
+| **Streaming Server** | 172.31.57.219 | t2.micro | ✅ 운영 중 |
 
 ---
 
 ## 실행 스크립트
 
-```bash
-# 매칭 엔진
-./wrapper/run_engine.sh           # 기본 (INFO)
-./wrapper/run_engine.sh --debug   # 디버그 (DEBUG)
-
-# 스트리밍 서버
-./streamer/node/run_streamer.sh           # 기본
-./streamer/node/run_streamer.sh --debug   # 디버그
-```
-
----
-
-## Redis 키 구조
-
-### Depth Cache (실시간 데이터)
-
-| 키 패턴 | 타입 | 용도 |
-|---------|------|------|
-| `depth:SYMBOL` | String | 실시간 호가 10단계 (Main 구독) |
-| `ticker:SYMBOL` | String | 간략 티커 (Sub 구독) |
-| `ohlc:SYMBOL` | String | 당일 OHLCV 데이터 |
-| `trades:SYMBOL` | List | 체결 내역 (최대 10만건) |
-| `active:symbols` | Set | 활성 심볼 목록 |
-
-### 구독자 관리
-
-| 키 패턴 | 타입 | 용도 |
-|---------|------|------|
-| `symbol:SYMBOL:main` | Set | Main(호가) 구독자 connectionId |
-| `symbol:SYMBOL:sub` | Set | Sub(전광판) 구독자 connectionId |
-| `conn:CONNID:main` | String | 해당 연결의 Main 구독 심볼 |
-| `ws:CONNID` | String | WebSocket 연결 정보 (userId, connectedAt) |
-| `user:USERID:connections` | Set | 사용자별 연결 목록 |
-
-### Backup Cache (영구 데이터)
-
-| 키 패턴 | 타입 | 용도 |
-|---------|------|------|
-| `snapshot:SYMBOL` | String | 오더북 스냅샷 |
-| `prev:SYMBOL` | String | 전일 OHLC (자정 리셋 시 저장) |
-
-
----
-
-## 현재 구현 상태 (2025-12-09)
-
-### 배포된 AWS 리소스
-
-| 서비스 | 리소스 이름 | 상태 |
-|---|---|---|
-| **Amazon Kinesis** | `supernoba-orders`, `supernoba-fills`, `supernoba-depth`, `supernoba-order-status` | ✅ 운영 중 |
-| **ElastiCache Valkey** | `supernoba-depth-cache`, `Orderbook-backup-cache` | ✅ 운영 중 |
-| **API Gateway WebSocket** | `Supernoba-ws` (l2ptm85wub) | ✅ 운영 중 |
-| **NAT Gateway** | `nat-17d68eebde280f74f` (13.125.71.17) | ✅ 운영 중 |
-
-### Lambda 함수
-
-| 함수명 | 트리거 | 역할 |
-|--------|--------|------|
-| `Supernoba-order-router` | API Gateway REST | 주문 접수 → Kinesis 발행 |
-| `connect-handler` | API Gateway `$connect` | WebSocket 연결, user:connections 관리 |
-| `subscribe-handler` | API Gateway `subscribe` | Main/Sub 구독 처리 |
-| `disconnect-handler` | API Gateway `$disconnect` | 연결 해제, 구독 정리 |
-| `trades-backup-handler` | EventBridge (10분) | 체결 내역 → S3 + DynamoDB 백업 |
-| `chart-data-handler` | API Gateway HTTP `/chart` | 1분봉 → 상위 타임프레임 집계 API |
-| `candle-aggregator` | EventBridge (매 분) | trades → 1분봉 집계 → DynamoDB |
-| `daily-backup-handler` | EventBridge (00:00 KST) | 전일 OHLC → S3 + DynamoDB |
-
-### 요약 기술 스택
-
-| 레이어 | 주요 기술 |
-|---|---|
-| 클라이언트 진입 | API Gateway (HTTP/WebSocket) |
-| 라우팅 | Lambda (Order Router), ElastiCache Valkey |
-| 메시지 큐 | **Amazon Kinesis Data Streams** (4개 스트림) |
-| 매칭 엔진 | Liquibook C++ + AWS SDK on EC2 |
-| 실시간 스트리밍 | Streamer (Node.js) → API Gateway → Client |
-| 데이터 백업 | Lambda → S3, DynamoDB |
-
----
-
-## 차트 데이터 아키텍처
-
-> **원칙**: 서버에서 타임프레임별로 미리 집계(Aggregated)된 데이터를 클라이언트에 제공.  
-> 엔진에서는 캔들 집계를 하지 않고, 별도 Lambda가 담당.
-
-### 데이터 흐름
-
-```mermaid
-flowchart LR
-    subgraph Engine["C++ 매칭 엔진"]
-        Trade[체결 발생]
-    end
-    
-    subgraph Valkey["ElastiCache Valkey"]
-        Trades["trades:SYMBOL\n(체결 리스트)"]
-        OHLC["ohlc:SYMBOL\n(당일 OHLCV)"]
-    end
-    
-    subgraph Lambda["Lambda 함수들"]
-        Backup["trades-backup-handler\n(10분마다)"]
-        Chart["chart-data-handler\n(REST API)"]
-        Aggregator["candle-aggregator\n(캔들 집계)"]
-    end
-    
-    subgraph Storage["저장소"]
-        S3["S3\ntrades/SYMBOL/date/"]
-        DDB["DynamoDB\ncandle_history"]
-    end
-    
-    Trade --> Trades
-    Trade --> OHLC
-    Trades --> Backup
-    Backup --> S3
-    Backup --> DDB
-    S3 --> Aggregator
-    Aggregator --> DDB
-    DDB --> Chart
-    Valkey --> Chart
-    
-    style Engine fill:#00599C,color:white
-    style Valkey fill:#4CAF50,color:white
-```
-
-### API 응답 형식 (lightweight-charts 호환)
-
-```json
-{
-  "symbol": "TEST",
-  "interval": "15m",
-  "data": [
-    {"time": 1702306800, "open": 150, "high": 155, "low": 148, "close": 152, "volume": 1200}
-  ]
-}
-```
-
-### 타임프레임별 집계 전략 (Option B)
-
-> **원칙**: 1분봉만 DynamoDB에 저장. 상위 타임프레임은 쿼리 시 1분봉 합산.
-
-| 타임프레임                 | 집계 방법                            | 저장       |
-| --------------------- | -------------------------------- | -------- |
-| **1분**                | `candle-aggregator` Lambda (매 분) | DynamoDB |
-| 3분, 5분, 10분, 15분, 30분 | `chart-data-handler`에서 1분봉 합산    | ❌        |
-| **1시간, 4시간**          | 1분봉 60개/240개 합산                  | ❌        |
-| **1일**                | `ohlc:SYMBOL` 자정 저장분 사용          | DynamoDB |
-
-### Lambda 함수
-
-| 함수명 | 트리거 | 역할 |
-|--------|--------|------|
-| `candle-aggregator` | EventBridge `cron(* * * * ? *)` | trades:* → 1분봉 → DynamoDB |
-| `chart-data-handler` | API Gateway HTTP `/chart` | 1분봉 조회 → 상위 타임프레임 집계 → 응답 |
-
-### DynamoDB 테이블: `candle_history`
-
-| 키 | 타입 | 예시 |
-|----|------|------|
-| **PK** | String | `CANDLE#TEST#1m` |
-| **SK** | Number | `1702306800` (Unix timestamp) |
-
-```json
-{
-  "pk": "CANDLE#TEST#1m",
-  "sk": 1702306800,
-  "symbol": "TEST",
-  "interval": "1m",
-  "time": 1702306800,
-  "open": 150, "high": 152, "low": 149, "close": 151,
-  "volume": 100
-}
-```
-
----
-
-## 1. 클라이언트 진입점 (Ingress Layer)
-
-| 컴포넌트                  | AWS 서비스 / 기술 스택                      | 역할                       |
-| --------------------- | ------------------------------------ | ------------------------ |
-| **WebSocket Gateway** | Amazon API Gateway (WebSocket API)   | 클라이언트 영구 연결 관리, 호가/체결 푸시 |
-| **REST API**          | Amazon API Gateway (HTTP API) 또는 ALB | 주문 제출 REST 엔드포인트         |
-| **인증**                | Amazon Cognito 또는 자체 JWT             | 사용자 인증 및 토큰 검증           |
-
-### 구현 포인트
-- API Gateway는 직접 MSK로 쏘지 못하므로, Lambda 또는 Fargate로 구현된 **Order Router**를 붙입니다.
-- WebSocket은 연결 ID를 DynamoDB/Redis에 저장하여 체결 시 푸시 대상을 식별합니다.
-
----
-
-## 2. 주문 라우터 (Order Router / Traffic Controller)
-
-| 컴포넌트 | 기술 스택 | 역할 |
-|---|---|---|
-| **라우터 서비스** | Go 또는 Rust on ECS Fargate / EC2 | 종목코드 기반 라우팅 결정, 핫샤드 감지 시 주문 일시정지(Pause) |
-| **라우팅 테이블** | Amazon ElastiCache (Redis) | 종목 -> 인스턴스 매핑 정보 저장, 실시간 조회 |
-| **주문 큐** | Amazon MSK | 종목별 파티셔닝, 주문 버퍼링 |
-
-### 구현 포인트 (Order Router)
-```go
-// 의사 코드 (Go)
-func RouteOrder(order Order) {
-    // 1. Redis에서 종목 라우팅 정보 조회
-    routeInfo := redis.Get("route:" + order.Symbol)
-
-    // 2. 해당 종목이 마이그레이션 중(Paused)이면 MSK에만 적재
-    if routeInfo.Status == "MIGRATING" {
-        msk.Send("pending-orders", order.Symbol, order) // 파티션 키 = 종목
-        return
-    }
-
-    // 3. 정상이면 해당 파티션(인스턴스)으로 라우팅
-    msk.Send("orders", order.Symbol, order)
-}
-```
-
-- **파티션 키**를 종목 코드로 설정하면, 동일 종목 주문은 항상 같은 파티션으로 가서 순서 보장됩니다.
-- Redis 라우팅 테이블 구조:
-  - `route:SAMSUNG` -> `{ "target_instance": "i-0abc123", "status": "ACTIVE" | "MIGRATING" }`
-
----
-
-## 3. 매칭 엔진 클러스터 (Matching Engine Layer)
-
-| 컴포넌트 | 기술 스택 | 역할 |
-|---|---|---|
-| **매칭 엔진** | Liquibook (C++) + 커스텀 래퍼 on EC2 (c6i.xlarge 이상) | 주문 매칭 핵심 로직 |
-| **MSK Consumer** | librdkafka (C++) 또는 Sarama (Go) | MSK에서 주문 소비 |
-| **gRPC/TCP Server** | gRPC (C++) 또는 Boost.Asio | 오케스트레이터(Step Functions)와 통신, 스냅샷 요청/응답 |
-| **상태 스냅샷 저장소** | Amazon S3 (대용량) 또는 Redis (저지연) | 오더북 직렬화 데이터 저장 |
-
-### Liquibook 추가 구현 필요 사항
-1. **MSK Consumer Thread**: MSK에서 주문을 읽어 `OrderBook::add()` 호출.
-2. **gRPC Server**:
-   - `SnapshotOrderBook(symbol)`: 해당 종목 오더북 직렬화 후 반환.
-   - `RestoreOrderBook(symbol, data)`: 직렬화 데이터로 오더북 복원.
-   - `RemoveOrderBook(symbol)`: 해당 종목 오더북 메모리 해제.
-3. **메트릭 리포터**: 종목별 TPS, CPU 사용률을 CloudWatch Agent 또는 Prometheus로 전송.
-
----
-
-## 4. 마이그레이션 오케스트레이터 (Orchestrator)
-
-| 컴포넌트 | AWS 서비스 / 기술 스택 | 역할 |
-|---|---|---|
-| **상태 머신** | AWS Step Functions | 마이그레이션 전체 플로우 제어 |
-| **부하 감지** | Amazon CloudWatch Alarms | CPU > 85% 시 Step Functions 트리거 |
-| **인스턴스 제어** | AWS Lambda + EC2 API / ASG | 새 인스턴스 프로비저닝, AMI 시작 |
-
-```mermaid
-flowchart TD
-    A[1. DetectHotSymbol] --> B[2. ProvisionNewInstance]
-    B --> C[3. PauseRouting]
-    C --> D[4. WaitForDrain]
-    D --> E[5. TransferSnapshot]
-    E --> F[6. SwitchRouting]
-    F --> G[7. ReplayPendingOrders]
-    G --> H[8. Cleanup]
-    
-    A -.- A1[가장 부하가 높은 종목 식별]
-    B -.- B1[Warm Pool에서 EC2 시작]
-    C -.- C1[Redis 라우팅 status = MIGRATING]
-    D -.- D1[기존 인스턴스 주문 처리 완료 대기]
-    E -.- E1[gRPC 스냅샷 → S3 → 신규 인스턴스 복원]
-    F -.- F1[Redis 라우팅 target = 신규 인스턴스]
-    G -.- G1[pending-orders 토픽 재전송]
-    H -.- H1[기존 인스턴스에서 오더북 제거]
-```
-
----
-
-## 5. 체결 결과 및 시장 데이터 게시 (Egress Layer)
-
-| 컴포넌트 | 기술 스택 | 역할 |
-|---|---|---|
-| **체결 이벤트 발행** | Amazon MSK | 체결 발생 시 `fills` 토픽으로 발행 |
-| **시장 데이터 처리** | Flink on Kinesis Data Analytics 또는 Lambda Consumer | `fills`, `depth` 토픽 소비 후 가공 |
-| **클라이언트 푸시** | API Gateway Management API (WebSocket) | 연결된 클라이언트에 JSON 푸시 |
-| **호가 캐싱** | ElastiCache (Redis) | 최신 호가창 저장, 클라이언트 폴링 대응 |
-
----
-
-## 6. Warm Pool 전략 (비용 최적화)
-
-새 인스턴스 프로비저닝 시간을 줄이기 위해 **EC2 Auto Scaling Warm Pool**을 사용합니다.
-
-- **Warm Pool**: 미리 부팅된(또는 최대 절전모드) EC2 인스턴스를 풀에 대기시킵니다.
-- **마이그레이션 시**: Cold Start(수 분) 대신 Warm Start(수 초)로 인스턴스 확보.
-- **비용**: Running 상태가 아닌 Stopped 상태로 두면 EBS 비용만 발생.
-
----
-
-## 요약 기술 스택 테이블
-
-| 레이어 | 주요 기술 |
-|---|---|
-| 클라이언트 진입 | API Gateway (HTTP/WebSocket), Cognito |
-| 라우팅 | Go/Rust on Fargate, ElastiCache Redis |
-| 메시지 큐 | Amazon MSK (Kafka) |
-| 매칭 엔진 | Liquibook C++ + gRPC + MSK Client (librdkafka) on EC2 |
-| 오케스트레이션 | Step Functions, Lambda, CloudWatch Alarms |
-| 스냅샷 저장 | S3 (또는 Redis for low latency) |
-| 시장 데이터 | MSK, Lambda, API Gateway Push |
-
----
-
-## 7. 용량 산정 (Capacity Planning)
-
-### 7.1 Liquibook 성능 벤치마크 (로컬 테스트 기준)
-
-| 테스트 유형 | 결과 |
-|---|---|
-| Depth OrderBook TPS | 273,652 주문/초 |
-| BBO OrderBook TPS | 260,291 주문/초 |
-| No Depth TPS | 297,762 주문/초 |
-| 평균 레이턴시 | ~3,000 나노초 (3μs) |
-
-### 7.2 사용자 행동 기반 TPS 추정
-
-| 사용자 유형 | 주문 빈도 | 초당 주문 수 |
-|---|---|---|
-| 일반 사용자 | 10초에 1회 | 0.1 TPS |
-| 활발한 트레이더 | 3초에 1회 | 0.33 TPS |
-| 데이 트레이더 | 1초에 1회 | 1 TPS |
-| **평균 (혼합)** | 5초에 1회 | **0.2 TPS** |
-
-### 7.3 동시 사용자 수 계산
-
-```
-동시 사용자 = 엔진 TPS ÷ 사용자당 TPS
-```
-
-**예시 (평균 사용자 0.2 TPS 기준):**
-
-| 환경 | TPS | 동시 사용자 |
-|---|---|---|
-| 로컬 (273K TPS) | 273,000 | 1,365,000명 |
-| t2.micro (~10% 성능) | ~10,000 | ~50,000명 |
-| t2.medium | ~40,000 | ~200,000명 |
-| c6i.large | ~80,000 | ~400,000명 |
-
----
-
-## 8. EC2 인스턴스 사이징
-
-### 8.1 인스턴스별 예상 성능
-
-| 인스턴스 | vCPU | RAM | 예상 TPS | 권장 동시 사용자 | 권장 종목 수 |
-|---|---|---|---|---|---|
-| **t2.micro** | 1 | 1GB | ~10,000 | 5만 명 | 5~10개 |
-| **t2.small** | 1 | 2GB | ~15,000 | 7.5만 명 | 10~15개 |
-| **t2.medium** | 2 | 4GB | ~40,000 | 20만 명 | 50~100개 |
-| **c6i.large** | 2 | 4GB | ~80,000 | 40만 명 | 100~150개 |
-| **c6i.xlarge** | 4 | 8GB | ~200,000 | 100만 명 | 300~500개 |
-
-> ⚠️ **주의**: t2 인스턴스는 CPU 크레딧 제한이 있어 지속적인 부하에는 부적합합니다.
-
-### 8.2 시나리오별 권장 구성
-
-#### MVP (동시 사용자 1만 명, 종목 20개)
-
-```
-1x t2.medium
-- 월 비용: ~$42
-- 예상 TPS: 40,000
-- 필요 TPS: 1만 × 0.2 = 2,000
-- 여유율: 20배
-```
-
-#### 성장기 (동시 사용자 5만 명, 종목 100개)
-
-```
-1x c6i.large
-- 월 비용: ~$69
-- 예상 TPS: 80,000
-- 필요 TPS: 5만 × 0.2 = 10,000
-- 여유율: 8배
-```
-
-#### 대규모 (동시 사용자 50만 명, 종목 500개)
-
-```
-3x c6i.xlarge (샤딩)
-- 월 비용: ~$414
-- 예상 TPS: 600,000 (총합)
-- 필요 TPS: 50만 × 0.2 = 100,000
-- 여유율: 6배
-```
-
----
-
-## 9. 비용 추정 (서울 리전)
-
-### 9.1 EC2 비용
-
-| 인스턴스 | 시간당 | 월 비용 (24/7) | 용도 |
-|---|---|---|---|
-| t2.micro | $0.0144 | **$10** | 개발/테스트 |
-| t2.medium | $0.058 | **$42** | MVP |
-| c6i.large | $0.096 | **$69** | 프로덕션 |
-| c6i.xlarge | $0.192 | **$138** | 핫 샤드 |
-
-### 9.2 관련 서비스 비용 (월 예상)
-
-| 서비스 | 사양 | 월 비용 |
-|---|---|---|
-| **Amazon MSK** | kafka.t3.small × 2 | ~$100 |
-| **ElastiCache Redis** | cache.t3.micro | ~$15 |
-| **API Gateway** | 100만 요청 | ~$3.50 |
-| **S3** | 10GB 스냅샷 | ~$0.25 |
-| **CloudWatch** | 기본 메트릭 | ~$10 |
-
-### 9.3 총 비용 예상
-
-| 규모 | 월 예상 비용 |
-|---|---|
-| **개발/테스트** | ~$50 |
-| **MVP** | ~$200 |
-| **성장기** | ~$400 |
-| **대규모** | ~$1,000+ |
-
----
-
-## 10. 핫 샤드 마이그레이션 트리거 기준
-
-```mermaid
-flowchart LR
-    subgraph CPU["CPU 사용률 기반 스케일링"]
-        A["0-50%"] --> A1[정상 운영]
-        B["50-70%"] --> B1[경고 - 모니터링 강화]
-        C["70-85%"] --> C1[Warm Pool 인스턴스 준비]
-        D["85%+"] --> D1[마이그레이션 트리거 → 핫 종목 분리]
-    end
-    
-    style A fill:#4CAF50,color:white
-    style B fill:#FFC107,color:black
-    style C fill:#FF9800,color:white
-    style D fill:#F44336,color:white
-```
-
----
-
-## 11. 래퍼 코드 구현 체크리스트
-
-Liquibook 핵심 엔진을 AWS 프로덕션에 배포하려면 다음 래퍼 코드가 필요합니다:
-
-### 11.1 필수 구현 (🔴)
-
-| 컴포넌트 | 역할 | 기술 스택 |
-|---|---|---|
-| **MSK Consumer** | MSK → Liquibook 연결 | C++: librdkafka / Go: sarama |
-| **TradeListener** | 체결 → MSK 발행 | Liquibook 콜백 구현 |
-| **잔고 확인** | 주문 전 잔고 검증 | Order Router에서 처리 |
-| **가격 검증** | 호가 제한 (상한가/하한가) | Order Router에서 처리 |
-
-### 11.2 중요 구현 (🟡)
-
-| 컴포넌트 | 역할 | 기술 스택 |
-|---|---|---|
-| **gRPC Server** | 스냅샷/복원, 오케스트레이션 통신 | C++: grpc / Go: grpc-go |
-| **오더북 직렬화** | 스냅샷 → S3/Redis | JSON/Protobuf |
-| **메트릭 리포터** | TPS/CPU → CloudWatch | AWS SDK |
-
-### 11.3 권장 구현 (🟢)
-
-| 컴포넌트 | 역할 |
-|---|---|
-| **로그 수집** | 주문/체결 로그 → CloudWatch Logs |
-| **장애 복구** | 인스턴스 다운 시 자동 복구 |
-| **중복 주문 방지** | 동일 주문 ID 거부 |
-
----
-
-## 12. 영속성 (Persistence) 전략
-
-Liquibook은 인메모리 엔진이므로, 데이터 영속성을 별도로 구현해야 합니다:
-
-| 데이터 | 저장소 | 방법 |
-|---|---|---|
-| **오더북 스냅샷** | S3 | 주기적 직렬화 (1분 간격) |
-| **체결 기록** | DynamoDB / RDS | TradeListener에서 기록 |
-| **주문 로그** | Amazon MSK (보존) | 주문 토픽 retention 설정 |
-| **사용자 잔고** | DynamoDB | 체결 시 업데이트 |
-
-### 장애 복구 시나리오
-
-```mermaid
-flowchart TD
-    A[1. 인스턴스 다운 감지] --> B[2. Warm Pool에서 새 인스턴스 시작]
-    B --> C[3. S3에서 최신 스냅샷 복원]
-    C --> D[4. MSK에서 스냅샷 이후 주문 리플레이]
-    D --> E[5. 라우팅 테이블 업데이트]
-    E --> F[6. 서비스 재개]
-    
-    A -.- CW[CloudWatch]
-    B -.- WP[Warm Pool]
-    C -.- S3[(S3)]
-    D -.- MSK[MSK]
-    E -.- Redis[(Redis)]
-```
-
----
-
-## 13. 전체 아키텍처 상세 다이어그램
-
-```mermaid
-graph TD
-    %% Styles
-    classDef aws fill:#FF9900,stroke:#232F3E,stroke-width:2px,color:white;
-    classDef cpp fill:#00599C,stroke:#004482,stroke-width:2px,color:white;
-    classDef client fill:#808080,stroke:#333,stroke-width:2px,color:white;
-
-    subgraph Clients ["Clients (Mobile/Web)"]
-        UserApp[User App]:::client
-    end
-
-    subgraph AWS_Cloud ["AWS Cloud"]
-        style AWS_Cloud fill:#f9f9f9,stroke:#232F3E,stroke-dasharray: 5 5
-
-        APIG[API Gateway]:::aws
-        
-        subgraph Serverless ["Serverless Layer"]
-            OrderRouter[Order Router Lambda]:::aws
-            StreamHandler[Stream Handler Lambda]:::aws
-        end
-
-        subgraph MSK_Cluster ["Amazon MSK (Kafka)"]
-            Topic_Orders[Topic: orders]:::aws
-            Topic_Fills[Topic: fills]:::aws
-            Topic_Depth[Topic: depth]:::aws
-        end
-
-        subgraph EC2_Layer ["Matching Engine (EC2)"]
-            style EC2_Layer fill:#e6f3ff,stroke:#00599C
-            
-            Wrapper[C++ AWS Wrapper]:::cpp
-            Liquibook[Liquibook Core]:::cpp
-            
-            Wrapper <-->|Matches| Liquibook
-        end
-
-        subgraph Persistence ["Persistence Layer"]
-            Redis[(ElastiCache Redis)]:::aws
-            S3[(S3 Snapshots)]:::aws
-            DB[(User DB - Supabase)]:::aws
-        end
-    end
-
-    %% Connections
-    UserApp -->|REST/WS| APIG
-    APIG -->|Route| OrderRouter
-    APIG <-->|Push Updates| StreamHandler
-
-    OrderRouter -->|Check Balance| DB
-    OrderRouter -->|Publish| Topic_Orders
-    
-    Topic_Orders -->|Consume| Wrapper
-    Wrapper -->|Publish Fills| Topic_Fills
-    Wrapper -->|Publish Depth| Topic_Depth
-    
-    Topic_Fills -->|Consume| StreamHandler
-    Topic_Depth -->|Consume| StreamHandler
-    StreamHandler -->|Real-time Push| APIG
-    APIG -->|WebSocket| UserApp
-    
-    Wrapper -.->|Snapshot| S3
-    Wrapper -.->|Cache State| Redis
-```
-
-## 14. 고화질 아키텍처 다이어그램 생성 (Official Icons)
-
-AWS 공식 아이콘을 사용한 고화질 다이어그램(PNG)을 생성하려면 다음 단계를 따르세요.
-
-1.  **Graphviz 설치**: [Graphviz 다운로드](https://graphviz.org/download/) 및 설치 (시스템 PATH에 추가 필수).
-2.  **Python 라이브러리 설치**:
-    ```bash
-    pip install diagrams
-    ```
-3.  **스크립트 실행**:
-    ```bash
-    python generate_architecture.py
-    ```
-4.  결과물 `liquibook_aws_architecture.png` 확인.
-
----
-
-## 15. 전체 데이터 흐름도 (End-to-End Data Flow)
-
-아래는 사용자가 주문을 넣고 체결 결과를 받기까지의 **전체 데이터 흐름**입니다.
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant User as 👤 사용자 앱
-    participant APIG as API Gateway
-    participant Router as Order Router (Lambda)
-    participant DB as User DB (DynamoDB)
-    participant MSK_Orders as MSK (orders 토픽)
-    participant Engine as C++ Matching Engine (EC2)
-    participant MSK_Fills as MSK (fills 토픽)
-    participant Stream as Stream Handler (Lambda)
-    participant Redis as ElastiCache (Redis)
-
-    User->>APIG: 1. 주문 요청 (REST)
-    APIG->>Router: 2. 주문 라우팅
-    Router->>DB: 3. 잔고 확인
-    DB-->>Router: 4. 잔고 OK (₩1,000,000)
-    Router->>MSK_Orders: 5. 주문 발행
-
-    MSK_Orders->>Engine: 6. 주문 소비
-    Note over Engine: 7. Liquibook 매칭 처리
-    Engine->>MSK_Fills: 8. 체결 결과 발행
-    Engine->>Redis: 9. 호가창 캐시 업데이트
-
-    MSK_Fills->>Stream: 10. 체결 소비
-    Stream->>APIG: 11. WebSocket 푸시
-    APIG->>User: 12. 체결 알림 수신
-```
-
-### 15.1 단계별 데이터 예시
-
-#### 1️⃣ 사용자 → API Gateway: 주문 요청
-
-```json
-// POST /orders
-{
-  "user_id": "user_12345",
-  "symbol": "TSLA",
-  "side": "BUY",
-  "order_type": "LIMIT",
-  "price": 250.50,
-  "quantity": 10
-}
-```
-
-#### 2️⃣ Order Router → User DB: 잔고 확인
-
-```json
-// DynamoDB Query: Key = { "user_id": "user_12345" }
-// Response:
-{
-  "user_id": "user_12345",
-  "balance": 1000000,
-  "positions": { "TSLA": { "qty": 5, "avg_price": 245.00 } }
-}
-```
-
-**검증**: `250.50 × 10 = ₩2,505` ≤ `₩1,000,000` ✅
-
-#### 3️⃣ Order Router → MSK (orders 토픽): 주문 발행
-
-```json
-// Topic: orders, Partition Key: "TSLA"
-{
-  "order_id": "ord_abc123",
-  "user_id": "user_12345",
-  "symbol": "TSLA",
-  "side": "BUY",
-  "order_type": "LIMIT",
-  "price": 250.50,
-  "quantity": 10,
-  "timestamp": "2025-12-06T11:50:00.123Z"
-}
-```
-
-#### 4️⃣ C++ Engine: Liquibook 매칭 처리
-
-**매칭 전 오더북 상태 (TSLA)**:
-```
-        ASK (매도)             |         BID (매수)
-   수량    가격                |    가격      수량
-   ─────────────────────────────────────────────────
-    15    251.00              |    249.50     20
-     8    250.50  ← 매칭 대상  |    249.00     30
-    25    250.00              |    248.50     15
-```
-
-**매칭 결과**: 매수 `10주 @ 250.50` vs 매도 `8주 @ 250.50` → **8주 체결**, 잔량 **2주** 오더북 등록
-
-#### 5️⃣ C++ Engine → MSK (fills 토픽): 체결 결과 발행
-
-```json
-// Topic: fills
-{
-  "trade_id": "trd_xyz789",
-  "symbol": "TSLA",
-  "price": 250.50,
-  "quantity": 8,
-  "buyer": { "order_id": "ord_abc123", "user_id": "user_12345" },
-  "seller": { "order_id": "ord_def456", "user_id": "user_67890" },
-  "timestamp": "2025-12-06T11:50:00.456Z"
-}
-```
-
-#### 6️⃣ C++ Engine → Redis: 호가창 캐시 업데이트
-
-```json
-// Redis Key: orderbook:TSLA
-{
-  "symbol": "TSLA",
-  "asks": [
-    { "price": 250.00, "qty": 25 },
-    { "price": 251.00, "qty": 15 }
-  ],
-  "bids": [
-    { "price": 250.50, "qty": 2 },
-    { "price": 249.50, "qty": 20 },
-    { "price": 249.00, "qty": 30 }
-  ],
-  "last_price": 250.50,
-  "last_qty": 8
-}
-```
-
-#### 7️⃣ Stream Handler → 사용자 앱: WebSocket 푸시
-
-```json
-// WebSocket to user_12345
-{
-  "type": "FILL",
-  "data": {
-    "order_id": "ord_abc123",
-    "symbol": "TSLA",
-    "side": "BUY",
-    "filled_qty": 8,
-    "filled_price": 250.50,
-    "remaining_qty": 2,
-    "status": "PARTIALLY_FILLED"
-  }
-}
-```
-
-### 15.2 데이터 타입별 저장소 요약
-
-| 데이터 | 저장소 | 목적 |
-|---|---|---|
-| **주문 메시지** | MSK (orders) | 비동기 주문 큐 |
-| **체결 메시지** | MSK (fills) | 비동기 체결 알림 |
-| **사용자 잔고** | DynamoDB | 영구 저장 |
-| **실시간 호가창** | Redis | 저지연 캐시 |
-| **오더북 스냅샷** | S3 | 장애 복구용 백업 |
-
----
-
-## 16. 현재 구현 상태 (Current Implementation)
-
-### 16.1 배포된 AWS 리소스
-
-| 서비스 | 리소스 이름 | 상태 |
-|---|---|---|
-| **Amazon MSK** | `supernobamsk` | ✅ 운영 중 |
-| **ElastiCache Redis** | `supernobaorderbookbackupcache` | ✅ 운영 중 |
-| **EC2 (매칭 엔진)** | `ip-172-31-47-97` | ✅ 빌드 완료 |
-
-### 16.2 MSK 브로커 엔드포인트
-
-```
-# IAM 인증 (포트 9098)
-b-1.supernobamsk.c1dtdv.c3.kafka.ap-northeast-2.amazonaws.com:9098
-b-2.supernobamsk.c1dtdv.c3.kafka.ap-northeast-2.amazonaws.com:9098
-b-3.supernobamsk.c1dtdv.c3.kafka.ap-northeast-2.amazonaws.com:9098
-```
-
-### 16.3 ElastiCache Redis 엔드포인트
-
-```
-master.supernobaorderbookbackupcache.5vrxzz.apn2.cache.amazonaws.com:6379
-```
-
-### 16.4 C++ 매칭 엔진 구현 현황
-
-| 컴포넌트 | 파일 | 상태 |
-|---|---|---|
-| **KafkaConsumer** | `kafka_consumer.cpp` | ✅ 완료 (IAM 인증 포함) |
-| **KafkaProducer** | `kafka_producer.cpp` | ✅ 완료 (IAM 인증 포함) |
-| **EngineCore** | `engine_core.cpp` | ✅ 완료 |
-| **MarketDataHandler** | `market_data_handler.cpp` | ✅ 완료 |
-| **RedisClient** | `redis_client.cpp` | ✅ 완료 |
-| **gRPC Service** | `grpc_service.cpp` | ✅ 완료 |
-| **MSK IAM Auth** | `msk_iam_auth.cpp` | ✅ 완료 |
-| **Metrics** | `metrics.cpp` | ✅ 완료 |
-
-### 16.5 Kafka 토픽 구조
-
-```mermaid
-graph TD
-    subgraph MSK["Amazon MSK 토픽"]
-        orders[orders] --> |Lambda → Engine| desc1[주문 입력]
-        fills[fills] --> |Engine → Lambda| desc2[체결 결과]
-        trades[trades] --> desc3[거래 발생 이벤트]
-        depth[depth] --> desc4[호가창 변경 이벤트]
-        order_status[order_status] --> desc5[주문 상태 accept/reject/cancel]
-    end
-    
-    style orders fill:#FF9900,color:white
-    style fills fill:#FF9900,color:white
-    style trades fill:#FF9900,color:white
-    style depth fill:#FF9900,color:white
-    style order_status fill:#FF9900,color:white
-```
-
-### 16.6 EC2 실행 방법
+### 매칭 엔진 (C++)
 
 ```bash
-# 1. EC2 접속 후 실행 스크립트 사용
 cd ~/liquibook/wrapper
-./run_engine.sh
-
-# 스크립트가 자동으로:
-# - 환경변수 설정
-# - git pull
-# - cmake 빌드
-# - 매칭 엔진 실행
+./run_engine.sh           # 기본 (INFO)
+./run_engine.sh --debug   # 디버그 (DEBUG)
+./run_engine.sh --dev     # 캐시 초기화 후 시작
 ```
 
-### 16.7 환경변수 설정
+### 스트리밍 서버 (Node.js)
 
-| 변수 | 값 | 설명 |
-|---|---|---|
-| `KAFKA_BROKERS` | MSK IAM 엔드포인트 (9098) | Kafka 브로커 주소 |
-| `REDIS_HOST` | ElastiCache 엔드포인트 | Redis 호스트 |
-| `REDIS_PORT` | `6379` | Redis 포트 |
+```bash
+cd ~/liquibook/streamer/node
+./run_streamer.sh           # 기본
+./run_streamer.sh --debug   # 디버그
+./run_streamer.sh --init    # 익명 사용자 캐시 초기화
+```
+
+---
+
+## C++ 매칭 엔진 구현 현황
+
+| 컴포넌트 | 파일 | 설명 |
+|----------|------|------|
+| **KinesisConsumer** | `kinesis_consumer.cpp` | Kinesis → 주문 수신 |
+| **KinesisProducer** | `kinesis_producer.cpp` | 체결 → Kinesis 발행 |
+| **DynamoDBClient** | `dynamodb_client.cpp` | 체결 → DynamoDB 저장 |
+| **EngineCore** | `engine_core.cpp` | Liquibook 래퍼 |
+| **MarketDataHandler** | `market_data_handler.cpp` | 체결/Depth 이벤트 처리 |
+| **RedisClient** | `redis_client.cpp` | Valkey 연결 |
+| **gRPC Service** | `grpc_service.cpp` | 스냅샷 API |
+| **Metrics** | `metrics.cpp` | 통계 수집 |
+
+---
+
+## 환경변수
+
+### 매칭 엔진
+
+| 변수 | 기본값 | 설명 |
+|------|--------|------|
+| `KINESIS_ORDERS_STREAM` | `supernoba-orders` | 주문 스트림 |
+| `KINESIS_FILLS_STREAM` | `supernoba-fills` | 체결 스트림 |
+| `DYNAMODB_TABLE` | `trade_history` | 체결 기록 테이블 |
+| `REDIS_HOST` | (Backup Cache) | 스냅샷 캐시 |
+| `DEPTH_CACHE_HOST` | (Depth Cache) | 호가 캐시 |
 | `AWS_REGION` | `ap-northeast-2` | AWS 리전 |
 | `GRPC_PORT` | `50051` | gRPC 서버 포트 |
-| `LOG_LEVEL` | `DEBUG` / `INFO` | 로그 레벨 |
+| `LOG_LEVEL` | `INFO` | 로그 레벨 |
+
+### 스트리밍 서버
+
+| 변수 | 기본값 | 설명 |
+|------|--------|------|
+| `VALKEY_HOST` | (Depth Cache) | Valkey 호스트 |
+| `VALKEY_PORT` | `6379` | Valkey 포트 |
+| `WEBSOCKET_ENDPOINT` | `l2ptm85wub...` | API Gateway 엔드포인트 |
+| `DEBUG_MODE` | `false` | 디버그 모드 |
 
 ---
 
-## 18. 구현 완료된 기능 (2025-12-07)
-
-### 18.1 핵심 기능
-
-| 기능 | 상태 | 설명 |
-|------|------|------|
-| **주문 수신** | ✅ | MSK orders 토픽에서 주문 소비 |
-| **매칭 처리** | ✅ | Liquibook 가격-시간 우선순위 알고리즘 |
-| **체결 발행** | ✅ | fills, trades, depth, order_status 토픽 발행 |
-| **자동 스냅샷** | ✅ | 10초마다 모든 오더북 → Redis 저장 |
-| **시작 시 복원** | ✅ | Redis에서 스냅샷 로드 → 오더북 복원 |
-| **종료 시 저장** | ✅ | Ctrl+C 시 최종 스냅샷 저장 후 종료 |
-| **비로그인 호가 스트림** | ✅ | `depthStreamHandler` Lambda 구현 *(2025-12-07)* |
-
-### 18.2 구현 필요 항목 (TODO)
-
-| 기능 | 위치 | 설명 |
-|------|------|------|
-| **Supabase 잔고 확인** | `orderHandler` Lambda | 주문 전 사용자 잔고 검증 |
-| **Order ID UUID 생성** | `orderHandler` Lambda | 중복 방지 해시 ID 생성 |
-| **로그인 사용자 체결 알림** | `userOrdersHandler` Lambda | fills, order_status 개인 푸시 |
-| **S3 오더북 백업** | C++ Engine | 장기 백업용 S3 저장 |
-| **관리자 API** | Lambda (Admin) | 종목 조회/추가, 오더북 상세 |
-
-### 18.2 주문 JSON 포맷
+## 주문 JSON 포맷
 
 ```json
 {
   "action": "ADD",
-  "symbol": "AAPL",
-  "order_id": "order-001",
-  "user_id": "user123",
+  "symbol": "TEST",
+  "order_id": "ord_abc123",
+  "user_id": "user_12345",
   "is_buy": true,
   "price": 15000,
   "quantity": 100
@@ -1021,20 +371,38 @@ cd ~/liquibook/wrapper
 | `order_id` | string | 주문 고유 ID |
 | `user_id` | string | 사용자 ID |
 | `is_buy` | boolean | 매수=true, 매도=false |
-| `price` | integer | 주문 가격 (센트 단위) |
+| `price` | integer | 주문 가격 |
 | `quantity` | integer | 주문 수량 |
-
-### 18.3 현재 MSK 접근 방식
-
-```
-# Plaintext (포트 9092) - 현재 사용 중
-b-1.supernobamsk.c1dtdv.c3.kafka.ap-northeast-2.amazonaws.com:9092
-b-2.supernobamsk.c1dtdv.c3.kafka.ap-northeast-2.amazonaws.com:9092
-b-3.supernobamsk.c1dtdv.c3.kafka.ap-northeast-2.amazonaws.com:9092
-```
-
-> ⚠️ IAM 인증(9098)은 librdkafka C++ 호환 이슈로 Plaintext 사용 중 (MSK 레거시)
 
 ---
 
-*최종 업데이트: 2025-12-11*
+## 용량 산정
+
+### Liquibook 성능 벤치마크
+
+| 테스트 유형 | 결과 |
+|------------|------|
+| Depth OrderBook TPS | 273,652 주문/초 |
+| 평균 레이턴시 | ~3,000 나노초 (3μs) |
+
+### 인스턴스별 예상 성능
+
+| 인스턴스 | vCPU | RAM | 예상 TPS | 권장 동시 사용자 |
+|----------|------|-----|----------|------------------|
+| t2.medium | 2 | 4GB | ~40,000 | 20만 명 |
+| c6i.large | 2 | 4GB | ~80,000 | 40만 명 |
+| c6i.xlarge | 4 | 8GB | ~200,000 | 100만 명 |
+
+---
+
+## TODO
+
+| 기능 | 위치 | 설명 |
+|------|------|------|
+| **사용자 알림** | `user-notify-handler` Lambda | fills 개인 푸시 |
+| **잔고 확인** | `order-router` Lambda | 주문 전 Supabase 잔고 검증 |
+| **S3 백업** | C++ Engine | 장기 백업용 S3 저장 (현재 Redis만) |
+
+---
+
+*최종 업데이트: 2025-12-13*

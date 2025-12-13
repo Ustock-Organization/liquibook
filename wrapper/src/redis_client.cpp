@@ -205,4 +205,177 @@ std::vector<std::string> RedisClient::lrange(const std::string& key, long start,
     return result;
 }
 
+// === Hash 연산 (캔들용) ===
+
+bool RedisClient::hset(const std::string& key, const std::string& field, const std::string& value) {
+    if (!context_) return false;
+    
+    auto reply = static_cast<redisReply*>(
+        redisCommand(context_, "HSET %s %s %s", key.c_str(), field.c_str(), value.c_str()));
+    
+    if (!reply) return false;
+    
+    bool success = (reply->type != REDIS_REPLY_ERROR);
+    freeReplyObject(reply);
+    return success;
+}
+
+std::optional<std::string> RedisClient::hget(const std::string& key, const std::string& field) {
+    if (!context_) return std::nullopt;
+    
+    auto reply = static_cast<redisReply*>(
+        redisCommand(context_, "HGET %s %s", key.c_str(), field.c_str()));
+    
+    if (!reply) return std::nullopt;
+    
+    std::optional<std::string> result;
+    if (reply->type == REDIS_REPLY_STRING) {
+        result = std::string(reply->str, reply->len);
+    }
+    
+    freeReplyObject(reply);
+    return result;
+}
+
+std::map<std::string, std::string> RedisClient::hgetall(const std::string& key) {
+    std::map<std::string, std::string> result;
+    if (!context_) return result;
+    
+    auto reply = static_cast<redisReply*>(
+        redisCommand(context_, "HGETALL %s", key.c_str()));
+    
+    if (!reply) return result;
+    
+    if (reply->type == REDIS_REPLY_ARRAY && reply->elements % 2 == 0) {
+        for (size_t i = 0; i < reply->elements; i += 2) {
+            std::string field(reply->element[i]->str, reply->element[i]->len);
+            std::string value(reply->element[i+1]->str, reply->element[i+1]->len);
+            result[field] = value;
+        }
+    }
+    
+    freeReplyObject(reply);
+    return result;
+}
+
+// === Lua Script EVAL ===
+
+std::string RedisClient::eval(const std::string& script, int numKeys,
+                               const std::vector<std::string>& keys,
+                               const std::vector<std::string>& args) {
+    if (!context_) return "";
+    
+    // 명령어 구성: EVAL script numkeys key1 key2 ... arg1 arg2 ...
+    std::vector<const char*> argv;
+    std::vector<size_t> argvlen;
+    
+    std::string cmd = "EVAL";
+    argv.push_back(cmd.c_str());
+    argvlen.push_back(cmd.size());
+    
+    argv.push_back(script.c_str());
+    argvlen.push_back(script.size());
+    
+    std::string numKeysStr = std::to_string(numKeys);
+    argv.push_back(numKeysStr.c_str());
+    argvlen.push_back(numKeysStr.size());
+    
+    for (const auto& key : keys) {
+        argv.push_back(key.c_str());
+        argvlen.push_back(key.size());
+    }
+    
+    for (const auto& arg : args) {
+        argv.push_back(arg.c_str());
+        argvlen.push_back(arg.size());
+    }
+    
+    auto reply = static_cast<redisReply*>(
+        redisCommandArgv(context_, static_cast<int>(argv.size()), argv.data(), argvlen.data()));
+    
+    if (!reply) {
+        Logger::error("Redis EVAL failed:", context_->errstr);
+        return "";
+    }
+    
+    std::string result;
+    if (reply->type == REDIS_REPLY_STRING) {
+        result = std::string(reply->str, reply->len);
+    } else if (reply->type == REDIS_REPLY_INTEGER) {
+        result = std::to_string(reply->integer);
+    } else if (reply->type == REDIS_REPLY_ERROR) {
+        Logger::error("Redis EVAL error:", reply->str);
+    }
+    
+    freeReplyObject(reply);
+    return result;
+}
+
+// === 캔들 집계 (Lua Script) ===
+
+bool RedisClient::updateCandle(const std::string& symbol, uint64_t price, uint64_t qty, int64_t timestamp) {
+    if (!context_) return false;
+    
+    // Lua Script: 원자적 캔들 업데이트
+    static const std::string luaScript = R"(
+        local key = KEYS[1]
+        local closedKey = KEYS[2]
+        local price = tonumber(ARGV[1])
+        local qty = tonumber(ARGV[2])
+        local ts = tonumber(ARGV[3])
+        local minute = math.floor(ts / 60) * 60
+        
+        local current_t = redis.call("HGET", key, "t")
+        
+        -- 새 분이면 이전 봉을 closed 버퍼로 이동
+        if current_t and tonumber(current_t) < minute then
+            local old = redis.call("HGETALL", key)
+            if #old > 0 then
+                local json = cjson.encode(old)
+                redis.call("LPUSH", closedKey, json)
+                redis.call("LTRIM", closedKey, 0, 999)  -- 최대 1000개 유지
+            end
+            redis.call("DEL", key)
+            current_t = nil
+        end
+        
+        -- 캔들 갱신
+        if not current_t then
+            redis.call("HMSET", key, "o", price, "h", price, "l", price, "c", price, "v", qty, "t", minute)
+        else
+            local h = tonumber(redis.call("HGET", key, "h"))
+            local l = tonumber(redis.call("HGET", key, "l"))
+            if price > h then redis.call("HSET", key, "h", price) end
+            if price < l then redis.call("HSET", key, "l", price) end
+            redis.call("HSET", key, "c", price)
+            redis.call("HINCRBYFLOAT", key, "v", qty)
+        end
+        
+        redis.call("EXPIRE", key, 300)
+        redis.call("EXPIRE", closedKey, 3600)
+        
+        return "OK"
+    )";
+    
+    std::string key = "candle:1m:" + symbol;
+    std::string closedKey = "candle:closed:1m:" + symbol;
+    
+    std::vector<std::string> keys = {key, closedKey};
+    std::vector<std::string> args = {
+        std::to_string(price),
+        std::to_string(qty),
+        std::to_string(timestamp)
+    };
+    
+    std::string result = eval(luaScript, 2, keys, args);
+    
+    if (result == "OK") {
+        Logger::debug("Candle updated:", symbol, "price:", price, "qty:", qty);
+        return true;
+    } else {
+        Logger::warn("Candle update failed:", symbol);
+        return false;
+    }
+}
+
 } // namespace aws_wrapper

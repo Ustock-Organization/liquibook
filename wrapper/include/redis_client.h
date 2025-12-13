@@ -5,6 +5,7 @@
 #include <memory>
 #include <optional>
 #include <vector>
+#include <map>
 
 namespace aws_wrapper {
 
@@ -28,6 +29,19 @@ public:
     bool lpush(const std::string& key, const std::string& value);
     bool ltrim(const std::string& key, long start, long stop);
     std::vector<std::string> lrange(const std::string& key, long start, long stop);
+    
+    // 해시 연산 (캔들용)
+    bool hset(const std::string& key, const std::string& field, const std::string& value);
+    std::optional<std::string> hget(const std::string& key, const std::string& field);
+    std::map<std::string, std::string> hgetall(const std::string& key);
+    
+    // Lua Script (EVAL)
+    std::string eval(const std::string& script, int numKeys, 
+                     const std::vector<std::string>& keys,
+                     const std::vector<std::string>& args);
+    
+    // 캔들 집계 (Lua Script 사용)
+    bool updateCandle(const std::string& symbol, uint64_t price, uint64_t qty, int64_t timestamp);
     
     // 스냅샷 전용
     bool saveSnapshot(const std::string& symbol, const std::string& data);

@@ -36,6 +36,15 @@ export const handler = async (event) => {
       await valkey.srem(`symbol:${mainSymbol}:main`, connectionId);
       await valkey.srem(`symbol:${mainSymbol}:subscribers`, connectionId);
       await valkey.del(`conn:${connectionId}:main`);
+      
+      // 구독자 0명이면 subscribed:symbols에서 제거
+      const remainingMain = await valkey.scard(`symbol:${mainSymbol}:main`);
+      const remainingLegacy = await valkey.scard(`symbol:${mainSymbol}:subscribers`);
+      if (remainingMain === 0 && remainingLegacy === 0) {
+        await valkey.srem('subscribed:symbols', mainSymbol);
+        console.log(`Removed ${mainSymbol} from subscribed:symbols (no subscribers)`);
+      }
+      
       console.log(`Removed main subscription: ${mainSymbol}`);
     }
     

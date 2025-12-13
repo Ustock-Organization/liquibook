@@ -104,15 +104,21 @@ int main(int argc, char* argv[]) {
         if (redis_connected) {
             Logger::info("Restoring snapshots from Redis...");
             auto snapshot_keys = redis.keys("snapshot:*");
+            int restored_count = 0;
             for (const auto& key : snapshot_keys) {
+                // :timestamp 키는 제외 (타임스탬프 메타데이터)
+                if (key.find(":timestamp") != std::string::npos) {
+                    continue;
+                }
                 std::string symbol = key.substr(9);  // "snapshot:" 제거
                 auto snapshot_data = redis.get(key);
                 if (snapshot_data.has_value()) {
                     engine.restoreOrderBook(symbol, snapshot_data.value());
                     Logger::info("Restored orderbook:", symbol);
+                    ++restored_count;
                 }
             }
-            Logger::info("Restored", snapshot_keys.size(), "orderbooks from Redis");
+            Logger::info("Restored", restored_count, "orderbooks from Redis");
         }
         
         // Kinesis Consumer 시작

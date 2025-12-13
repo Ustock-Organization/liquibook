@@ -96,6 +96,9 @@ void MarketDataHandler::on_fill(const OrderPtr& order,
         ohlc["t"] = epoch_sec;  // Unix timestamp (초)
         redis_->set("ohlc:" + symbol, ohlc.dump());
         Logger::debug("OHLC saved:", symbol);
+        
+        // === 1분봉 캔들 업데이트 (Lua Script) ===
+        redis_->updateCandle(symbol, fill_price, fill_qty, epoch_sec);
     }
     
     // === 체결 내역 캐시 저장 ===

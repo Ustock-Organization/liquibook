@@ -80,6 +80,20 @@ export const handler = async (event) => {
       };
     }
     
+    // 거래 가능 종목인지 확인
+    const isActiveSymbol = await valkey.sismember('active:symbols', order.symbol);
+    if (!isActiveSymbol) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ 
+          error: 'Symbol not available for trading',
+          symbol: order.symbol,
+          message: '등록되지 않은 종목입니다'
+        }),
+      };
+    }
+    
     // Supabase 잔고 확인 (선택적 - 미설정 시 건너뜀)
     console.log('Step 1: Balance check starting...');
     const balanceCheck = await checkBalance(userId, order.side, order.symbol, order.price || 0, order.quantity);

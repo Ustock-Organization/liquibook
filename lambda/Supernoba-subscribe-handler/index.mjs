@@ -50,13 +50,13 @@ export const handler = async (event) => {
       await valkey.sadd(`symbol:${main}:subscribers`, connectionId);
       await valkey.sadd(`symbol:${main}:main`, connectionId);
       await valkey.set(`conn:${connectionId}:main`, main);
-      await valkey.sadd('active:symbols', main);
+      await valkey.sadd('subscribed:symbols', main);
     }
     
     for (const symbol of sub || []) {
       await valkey.sadd(`symbol:${symbol}:subscribers`, connectionId);
       await valkey.sadd(`symbol:${symbol}:sub`, connectionId);
-      await valkey.sadd('active:symbols', symbol);
+      await valkey.sadd('subscribed:symbols', symbol);
     }
     
     return { 
