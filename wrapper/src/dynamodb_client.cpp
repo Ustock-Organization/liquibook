@@ -44,15 +44,25 @@ bool DynamoDBClient::putTrade(const std::string& symbol,
     Aws::DynamoDB::Model::PutItemRequest request;
     request.SetTableName(table_name_);
     
-    // Partition Key: symbol
-    request.AddItem("symbol", Aws::DynamoDB::Model::AttributeValue(symbol));
+    // 날짜 문자열 생성 (YYYYMMDD)
+    time_t rawtime = timestamp / 1000;  // milliseconds to seconds
+    struct tm* timeinfo = gmtime(&rawtime);
+    char dateStr[9];
+    strftime(dateStr, sizeof(dateStr), "%Y%m%d", timeinfo);
     
-    // Sort Key: timestamp
-    request.AddItem("timestamp", Aws::DynamoDB::Model::AttributeValue().SetN(std::to_string(timestamp)));
+    // Partition Key: TRADE#SYMBOL#DATE
+    std::string pk = "TRADE#" + symbol + "#" + dateStr;
+    request.AddItem("pk", Aws::DynamoDB::Model::AttributeValue(pk));
+    
+    // Sort Key: timestamp (Number)
+    request.AddItem("sk", Aws::DynamoDB::Model::AttributeValue().SetN(std::to_string(timestamp)));
     
     // 체결 데이터
+    request.AddItem("symbol", Aws::DynamoDB::Model::AttributeValue(symbol));
     request.AddItem("price", Aws::DynamoDB::Model::AttributeValue().SetN(std::to_string(price)));
     request.AddItem("quantity", Aws::DynamoDB::Model::AttributeValue().SetN(std::to_string(quantity)));
+    request.AddItem("timestamp", Aws::DynamoDB::Model::AttributeValue().SetN(std::to_string(timestamp)));
+    request.AddItem("date", Aws::DynamoDB::Model::AttributeValue(dateStr));
     request.AddItem("buyer_id", Aws::DynamoDB::Model::AttributeValue(buyer_id));
     request.AddItem("seller_id", Aws::DynamoDB::Model::AttributeValue(seller_id));
     request.AddItem("buyer_order", Aws::DynamoDB::Model::AttributeValue(buyer_order));

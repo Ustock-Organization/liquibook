@@ -463,7 +463,7 @@
                         </div>
                     </div>
                     <input type="hidden" id="orderUserId" value="test-user-1">
-                    <input type="hidden" id="orderEndpoint" value="https://4xs6g4w8l6.execute-api.ap-northeast-2.amazonaws.com/prod/orders">
+                    <input type="hidden" id="orderEndpoint" value="https://4xs6g4w8l6.execute-api.ap-northeast-2.amazonaws.com/restV2/orders">
                     <input type="hidden" id="apiKey" value="S0cLXAGtuza6T3GbYZ8TBbERqfdi5Xo1ilA914gf">
                     <button class="btn btn-primary" style="width: 100%; padding: 8px;" onclick="submitOrder()">주문 제출</button>
                     <div id="orderResponse" class="response-box" style="display: none; margin-top: 8px; font-size: 0.75rem;"></div>
@@ -1479,58 +1479,39 @@
             const symbol = document.getElementById('orderSymbol').value || 'TEST';
             
             try {
-                const orders = [];
-                
-                // 1. 체결용 매수+매도 (현재 가격에서 매칭)
-                orders.push({
+                // 체결용 매수+매도만 제출 (호가창은 이미 있다고 가정)
+                const buyOrder = {
                     user_id: 'candle-test-buyer',
                     symbol: symbol,
                     side: 'BUY',
                     price: candleCurrentPrice,
                     quantity: 10,
                     order_type: 'LIMIT'
-                });
-                orders.push({
+                };
+                const sellOrder = {
                     user_id: 'candle-test-seller',
                     symbol: symbol,
                     side: 'SELL',
                     price: candleCurrentPrice,
                     quantity: 10,
                     order_type: 'LIMIT'
-                });
+                };
                 
-                // 2. 호가창 채우기: 현재 가격 주변에 5단계 매수/매도 주문
-                for (let i = 1; i <= 5; i++) {
-                    // 매수 호가 (현재가 아래로)
-                    orders.push({
-                        user_id: `orderbook-bid-${i}`,
-                        symbol: symbol,
-                        side: 'BUY',
-                        price: candleCurrentPrice - i,
-                        quantity: 50 + Math.floor(Math.random() * 100),
-                        order_type: 'LIMIT'
-                    });
-                    // 매도 호가 (현재가 위로)
-                    orders.push({
-                        user_id: `orderbook-ask-${i}`,
-                        symbol: symbol,
-                        side: 'SELL',
-                        price: candleCurrentPrice + i,
-                        quantity: 50 + Math.floor(Math.random() * 100),
-                        order_type: 'LIMIT'
-                    });
-                }
-                
-                // 모든 주문 제출 (순차 처리로 호가창 형성)
-                for (const order of orders) {
-                    await fetch(endpoint, {
+                // 병렬로 2개 주문 제출 (순차가 아닌 동시 처리)
+                await Promise.all([
+                    fetch(endpoint, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-                        body: JSON.stringify(order)
-                    });
-                }
+                        body: JSON.stringify(buyOrder)
+                    }),
+                    fetch(endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+                        body: JSON.stringify(sellOrder)
+                    })
+                ]);
                 
-                candleOrderCount += orders.length;
+                candleOrderCount += 2;
                 document.getElementById('candleOrderCount').textContent = candleOrderCount;
                 
             } catch (e) {
