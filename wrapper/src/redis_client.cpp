@@ -327,32 +327,35 @@ bool RedisClient::updateCandle(const std::string& symbol, uint64_t price, uint64
         
         local current_t = redis.call("HGET", key, "t")
         
-        -- 새 분이면 이전 봉을 closed 버퍼로 이동
+        -- 현재 분과 이전 캔들의 분이 다르면 이전 캔들을 닫고 새 캔들을 시작
         if current_t and tonumber(current_t) < minute then
             local old = redis.call("HGETALL", key)
             if #old > 0 then
                 local json = cjson.encode(old)
                 redis.call("LPUSH", closedKey, json)
-                redis.call("LTRIM", closedKey, 0, 999)  -- 최대 1000개 유지
+                redis.call("LTRIM", closedKey, 0, 999)  -- 닫힌 캔들은 최대 1000개 유지
             end
-            redis.call("DEL", key)
+            redis.call("DEL", key) -- 이전 캔들 키 삭제
             current_t = nil
         end
         
-        -- 캔들 갱신
+        -- 캔들 데이터 갱신
         if not current_t then
+            -- 새 캔들 생성 (시가, 고가, 저가, 종가, 거래량, 타임스탬프 초기화)
             redis.call("HMSET", key, "o", price, "h", price, "l", price, "c", price, "v", qty, "t", minute)
         else
-            local h = tonumber(redis.call("HGET", key, "h"))
-            local l = tonumber(redis.call("HGET", key, "l"))
-            if price > h then redis.call("HSET", key, "h", price) end
-            if price < l then redis.call("HSET", key, "l", price) end
-            redis.call("HSET", key, "c", price)
-            redis.call("HINCRBYFLOAT", key, "v", qty)
+            -- 기존 캔들 데이터 갱신
+            local h = tonumber(redis.call("HGET", key, "h")) -- 현재 고가
+            local l = tonumber(redis.call("HGET", key, "l")) -- 현재 저가
+            if price > h then redis.call("HSET", key, "h", price) end -- 고가 갱신
+            if price < l then redis.call("HSET", key, "l", price) end -- 저가 갱신
+            redis.call("HSET", key, "c", price) -- 종가 갱신
+            redis.call("HINCRBYFLOAT", key, "v", qty) -- 거래량 증가
         end
         
-        redis.call("EXPIRE", key, 300)
-        redis.call("EXPIRE", closedKey, 3600)
+        -- 현재 캔들과 닫힌 캔들 버퍼에 만료 시간 설정
+        redis.call("EXPIRE", key, 300) -- 현재 캔들은 5분 후 만료
+        redis.call("EXPIRE", closedKey, 3600) -- 닫힌 캔들 버퍼는 1시간 후 만료
         
         return "OK"
     )";

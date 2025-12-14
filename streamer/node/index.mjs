@@ -1,5 +1,5 @@
 // Streaming Server v3 - 로그인/익명 사용자 분류 지원
-// 50ms: 로그인 사용자 (realtime:connections 기반)
+// 100ms: 로그인 사용자 (realtime:connections 기반)
 // 500ms: 익명 사용자
 
 import Redis from 'ioredis';
@@ -13,7 +13,7 @@ const WEBSOCKET_ENDPOINT = process.env.WEBSOCKET_ENDPOINT;
 const AWS_REGION = process.env.AWS_REGION || 'ap-northeast-2';
 const DEBUG_MODE = process.env.DEBUG_MODE === 'true';
 
-const FAST_POLL_MS = 50;   // 로그인 사용자
+const FAST_POLL_MS = 100;  // 로그인 사용자
 const SLOW_POLL_MS = 500;  // 익명 사용자
 
 function debug(...args) {
@@ -119,7 +119,7 @@ async function broadcastToSubscribers(symbol, mainSubs, subSubs, data, realtimeO
   let filteredSubSubs = subSubs;
   
   if (realtimeOnly) {
-    // 50ms 폴링: 로그인 사용자만
+    // 100ms 폴링: 로그인 사용자만
     const realtimeSet = await valkey.smembers('realtime:connections');
     const realtimeCheck = new Set(realtimeSet);
     filteredMainSubs = mainSubs.filter(id => realtimeCheck.has(id));
@@ -163,7 +163,7 @@ async function broadcastToSubscribers(symbol, mainSubs, subSubs, data, realtimeO
   }
 }
 
-// === 50ms 폴링 (로그인 사용자) ===
+// === 100ms 폴링 (로그인 사용자) ===
 async function fastPollLoop() {
   while (true) {
     try {

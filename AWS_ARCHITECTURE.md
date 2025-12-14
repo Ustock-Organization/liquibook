@@ -1,6 +1,6 @@
 # AWS Supernoba 아키텍처
 
-Amazon Kinesis + Valkey 기반 실시간 매칭 엔진 인프라 (2025-12-13 최신)
+Amazon Kinesis + Valkey 기반 실시간 매칭 엔진 인프라 (2025-12-14 최신)
 
 > **핵심 원칙**: Kinesis는 주문/체결용만 사용. Depth 데이터는 Valkey에 직접 저장 → Streamer가 폴링하여 WebSocket 푸시.
 
@@ -12,18 +12,29 @@ Amazon Kinesis + Valkey 기반 실시간 매칭 엔진 인프라 (2025-12-13 최
 flowchart TD
     subgraph Client["클라이언트"]
         App[Web/iOS App]
+        TestConsole[Test Console<br/>캔들 테스트 자동화]
+    end
+    
+    subgraph Auth["인증"]
+        Supabase[Supabase Auth<br/>JWT 토큰]
     end
     
     subgraph AWS["AWS Cloud (ap-northeast-2)"]
         APIG[API Gateway WebSocket<br/>l2ptm85wub]
+        APIG_REST[API Gateway REST<br/>0eeto6kblk]
         
         subgraph Lambda["Lambda Functions"]
-            Router[order-router]
-            Connect[connect-handler]
-            Subscribe[subscribe-handler]
-            Disconnect[disconnect-handler]
-            ChartAPI[chart-data-handler]
-            Backup[trades-backup<br/>10분마다]
+            Router[order-router<br/>active:symbols 검증]
+            Connect[connect-handler<br/>JWT 검증 + testMode]
+            Subscribe[subscribe-handler<br/>Main/Sub 구독]
+            Disconnect[disconnect-handler<br/>stale 연결 정리]
+            Admin[admin<br/>symbol-manager]
+            ChartAPI[chart-data-handler<br/>Hot+Cold 조회]
+            Backup[trades-backup<br/>EventBridge 10분]
+        end
+        
+        subgraph EventBridge["EventBridge"]
+            EB[trades-backup-10min<br/>rate 10 minutes]
         end
         
         subgraph Kinesis["Amazon Kinesis"]
@@ -31,84 +42,114 @@ flowchart TD
         end
         
         subgraph EC2_Engine["EC2: Matching Engine"]
-            Engine[Liquibook C++<br/>+ Lua Script]
+            Engine[Liquibook C++<br/>+ Lua Script 캔들]
         end
         
-        subgraph EC2_Streamer["EC2: Streaming Server"]
-            Fast[50ms 폴링<br/>실시간 사용자]
-            Slow[500ms 폴링<br/>익명 사용자]
+        subgraph EC2_Streamer["EC2: Streaming Server v3"]
+            Fast[50ms 폴링<br/>realtime:connections]
+            Slow[500ms 폴링<br/>익명 사용자 캐시]
         end
         
         subgraph ElastiCache["ElastiCache Valkey"]
             DepthCache["depth:SYMBOL<br/>ticker:SYMBOL"]
+            SubCache["ws:CONNID<br/>realtime:connections<br/>user:UID:connections"]
             CandleCache["candle:1m:SYMBOL<br/>candle:closed:*"]
-            BackupCache["snapshot:SYMBOL<br/>prev:SYMBOL"]
+            SymbolCache["active:symbols<br/>subscribed:symbols"]
         end
         
         subgraph Storage["영구 저장소"]
-            S3[(S3)]
-            DDB[(DynamoDB)]
+            S3[(S3<br/>candles/, trades/)]
+            DDB[(DynamoDB<br/>candle_history<br/>trade_history)]
         end
     end
     
-    App <-->|WSS| APIG
+    App <-->|WSS + JWT token| APIG
+    TestConsole -->|testMode=true| APIG
+    App -->|auth| Supabase
+    Supabase -.->|JWT 검증| Connect
+    
     APIG --> Router & Connect & Subscribe & Disconnect
+    APIG_REST --> Admin & ChartAPI
     
     Router -->|주문| K1
     K1 --> Engine
     Engine ==>|"Lua Script"| CandleCache
     Engine ==>|depth 저장| DepthCache
-    Engine -->|스냅샷| BackupCache
     
-    Subscribe -->|구독자 등록| DepthCache
+    Connect -->|isLoggedIn| SubCache
+    Subscribe -->|구독자 등록| SymbolCache
+    
+    SubCache ==>|realtime:connections 체크| Fast
     DepthCache ==> Fast
     CandleCache ==> Fast
     Fast -->|캐시| Slow
     Fast & Slow -->|PostToConnection| APIG
     APIG -->|depth+candle 푸시| App
     
-    CandleCache -->|10분| Backup
+    EB -->|트리거| Backup
+    CandleCache -->|closed candles| Backup
     Backup --> S3 & DDB
     ChartAPI -->|Hot| CandleCache
-    ChartAPI -->|Cold| S3
+    ChartAPI -->|Cold| DDB
+    
+    Admin -->|CRUD| SymbolCache
     
     style DepthCache fill:#DC382D,color:white
     style CandleCache fill:#DC382D,color:white
+    style SubCache fill:#DC382D,color:white
+    style SymbolCache fill:#DC382D,color:white
     style Engine fill:#00599C,color:white
     style Fast fill:#2196F3,color:white
     style Slow fill:#2196F3,color:white
+    style Supabase fill:#3ECF8E,color:white
+    style EB fill:#FF9900,color:white
 ```
 
 ---
 
-## 실시간 스트리밍 흐름
+## 실시간 스트리밍 흐름 (JWT 인증 포함)
 
 ```mermaid
 sequenceDiagram
-    participant Client as Web Client
+    participant Client as Web/Test Client
     participant APIG as API Gateway WS
+    participant Connect as connect-handler
     participant Subscribe as subscribe-handler
-    participant Valkey as Depth Cache
+    participant Valkey as Valkey
     participant Engine as C++ Engine
-    participant Streamer as Node.js Streamer
+    participant Streamer as Streamer v3
 
-    Client->>APIG: WebSocket 연결
-    Client->>APIG: {"action":"subscribe","main":"TEST","sub":["AAPL"]}
+    Note over Client: Supabase 로그인 → JWT 획득
+    Client->>APIG: WebSocket + ?token=JWT (or testMode=true)
+    APIG->>Connect: $connect route
+    
+    alt JWT 검증 성공 or testMode
+        Connect->>Valkey: ws:CONNID = {isLoggedIn: true}
+        Connect->>Valkey: SADD realtime:connections CONNID
+    else 익명
+        Connect->>Valkey: ws:CONNID = {isLoggedIn: false}
+    end
+    
+    Client->>APIG: {"action":"subscribe","main":"TEST"}
     APIG->>Subscribe: subscribe route
-    Subscribe->>Valkey: 구독 심볼 등록 (subscribed:symbols)
-    Subscribe->>Valkey: 구독자 등록 (symbol:TEST:main)
-    Subscribe->>Valkey: 서브 구독자 등록 (symbol:AAPL:sub)
+    Subscribe->>Valkey: SADD symbol:TEST:main CONNID
+    Subscribe->>Valkey: SADD subscribed:symbols TEST
     
-    Note over Engine: 주문 처리 → 호가 변경
-    Engine->>Valkey: 호가 저장 (depth:TEST)
-    Engine->>Valkey: 시세 저장 (ticker:TEST)
+    Note over Engine: 주문 처리 → 호가/캔들 변경
+    Engine->>Valkey: SET depth:TEST {...}
+    Engine->>Valkey: Lua Script → candle:1m:TEST
     
-    loop 매 500ms
-        Streamer->>Valkey: 구독 심볼 조회 (subscribed:symbols)
-        Streamer->>Valkey: 호가 조회 (Main 구독자용)
-        Streamer->>Valkey: 시세 조회 (Sub 구독자용)
-        Streamer->>APIG: PostToConnection
-        APIG->>Client: 데이터 푸시
+    loop 매 50ms (로그인 사용자)
+        Streamer->>Valkey: SMEMBERS realtime:connections
+        Streamer->>Valkey: GET depth:TEST + HGETALL candle:1m:TEST
+        Streamer->>APIG: PostToConnection (로그인 사용자만)
+        APIG->>Client: 실시간 데이터
+    end
+    
+    loop 매 500ms (익명 사용자)
+        Streamer->>Valkey: 캐시된 데이터 사용
+        Streamer->>APIG: PostToConnection (익명 사용자만)
+        APIG->>Client: 캐시 데이터
     end
 ```
 
@@ -206,22 +247,23 @@ flowchart TD
 
 ### Depth Cache (실시간 데이터)
 
-| 키 패턴 | 타입 | 용도 | 생성 위치 |
-|---------|------|------|----------|
-| `depth:SYMBOL` | String | 실시간 호가 10단계 (Main) | C++ `market_data_handler.cpp` |
-| `ticker:SYMBOL` | String | 간략 시세 (Sub) | C++ `updateTickerCache()` |
-| `active:symbols` | Set | 거래 가능 종목 목록 (Admin 관리) | `symbol-manager` |
-| `subscribed:symbols` | Set | 현재 구독자 있는 심볼 (자동) | `subscribe-handler`, `disconnect-handler` |
-| `symbol:SYMBOL:main` | Set | Main 구독자 connectionId | `subscribe-handler` |
-| `symbol:SYMBOL:sub` | Set | Sub 구독자 connectionId | `subscribe-handler` |
-| `symbol:SYMBOL:subscribers` | Set | 레거시 구독자 (호환용) | `subscribe-handler` |
-| `conn:CONNID:main` | String | 연결별 Main 구독 심볼 | `subscribe-handler` |
-| `ws:CONNID` | String | WebSocket 연결 정보 | `connect-handler` |
-| `user:USERID:connections` | Set | 사용자별 연결 목록 | `connect-handler` |
-| `candle:1m:SYMBOL` | Hash | 활성 1분봉 (o,h,l,c,v,t) | C++ Lua Script |
-| `candle:5m:SYMBOL` | Hash | 활성 5분봉 | Streamer 롤업 |
-| `candle:closed:1m:SYMBOL` | List | 마감 1분봉 버퍼 (백업 전) | C++ Lua Script |
-| `trades:SYMBOL` | List | 체결 버퍼 (TTL 24h) | C++ Engine |
+| 키 패턴                        | 타입     | 용도                                                  | 생성 위치                                     |
+| --------------------------- | ------ | --------------------------------------------------- | ----------------------------------------- |
+| `depth:SYMBOL`              | String | 실시간 호가 10단계 (Main)                                  | C++ `market_data_handler.cpp`             |
+| `ticker:SYMBOL`             | String | 간략 시세 (Sub)                                         | C++ `updateTickerCache()`                 |
+| `active:symbols`            | Set    | 거래 가능 종목 목록 (Admin 관리)                              | `symbol-manager`                          |
+| `subscribed:symbols`        | Set    | 현재 구독자 있는 심볼 (자동)                                   | `subscribe-handler`, `disconnect-handler` |
+| `symbol:SYMBOL:main`        | Set    | Main 구독자 connectionId                               | `subscribe-handler`                       |
+| `symbol:SYMBOL:sub`         | Set    | Sub 구독자 connectionId                                | `subscribe-handler`                       |
+| `symbol:SYMBOL:subscribers` | Set    | 레거시 구독자 (호환용)                                       | `subscribe-handler`                       |
+| `conn:CONNID:main`          | String | 연결별 Main 구독 심볼                                      | `subscribe-handler`                       |
+| `ws:CONNID`                 | String | WebSocket 연결 정보 `{userId, isLoggedIn, connectedAt}` | `connect-handler`                         |
+| `user:USERID:connections`   | Set    | 사용자별 연결 목록                                          | `connect-handler`                         |
+| `realtime:connections`      | Set    | 로그인 사용자 connectionId 목록 (50ms 폴링)                   | `connect-handler`                         |
+| `candle:1m:SYMBOL`          | Hash   | 활성 1분봉 (o,h,l,c,v,t)                                | C++ Lua Script                            |
+| `candle:5m:SYMBOL`          | Hash   | 활성 5분봉                                              | Streamer 롤업                               |
+| `candle:closed:1m:SYMBOL`   | List   | 마감 1분봉 버퍼 (백업 전)                                    | C++ Lua Script                            |
+| `trades:SYMBOL`             | List   | 체결 버퍼 (TTL 24h)                                     | C++ Engine                                |
 
 ### Backup Cache (영구 데이터)
 
@@ -265,16 +307,23 @@ flowchart TD
 
 ## Lambda 함수
 
-| 함수명 | 트리거 | 역할 |
-|--------|--------|------|
-| `Supernoba-order-router` | API Gateway REST | 주문 검증 → Kinesis (`active:symbols` 확인) |
-| `symbol-manager` | API Gateway REST | 종목 관리 (조회/추가/삭제) |
-| `connect-handler` | `$connect` | 연결 정보 저장, `ws:*` 키 생성 |
-| `subscribe-handler` | `subscribe` | Main/Sub 구독 등록, `subscribed:symbols` 추가 |
-| `disconnect-handler` | `$disconnect` | 구독 정리, `subscribed:symbols` 제거 |
-| `trades-backup-handler` | EventBridge (10분) | 체결 → S3 + DynamoDB |
-| `chart-data-handler` | API Gateway HTTP | 1분봉 → 상위 타임프레임 집계 |
-| `candle-aggregator` | EventBridge (매 분) | trades → 1분봉 → DynamoDB |
+| 함수명 | 트리거 | 역할 | VPC |
+|--------|--------|------|-----|
+| `Supernoba-order-router` | API Gateway REST | 주문 검증 → Kinesis (`active:symbols` 확인) | ✅ |
+| `Supernoba-admin` | API Gateway REST | 종목 관리 CRUD (`active:symbols`) | ✅ |
+| `Supernoba-connect-handler` | `$connect` | JWT/testMode 검증 → `ws:*`, `realtime:connections` 저장 | ✅ |
+| `Supernoba-subscribe-handler` | `subscribe`, `$default` | Main/Sub 구독 등록 | ✅ |
+| `Supernoba-disconnect-handler` | `$disconnect` | 구독 정리, stale 연결 정리 | ✅ |
+| `Supernoba-trades-backup-handler` | EventBridge (10분) | `candle:closed:*` → S3 + DynamoDB | ✅ |
+| `Supernoba-chart-data-handler` | API Gateway HTTP | Hot(Valkey) + Cold(DynamoDB) 병합 조회 | ✅ |
+
+### 인증 관련 환경변수 (connect-handler)
+
+| 변수 | 설명 |
+|------|------|
+| `SUPABASE_URL` | Supabase 프로젝트 URL |
+| `SUPABASE_ANON_KEY` | Supabase Anonymous Key |
+| `ALLOW_TEST_MODE` | `true`면 testMode 파라미터 허용 (개발 환경) |
 
 ---
 
@@ -400,9 +449,24 @@ cd ~/liquibook/streamer/node
 | 기능 | 위치 | 설명 |
 |------|------|------|
 | **사용자 알림** | `user-notify-handler` Lambda | fills 개인 푸시 |
-| **잔고 확인** | `order-router` Lambda | 주문 전 Supabase 잔고 검증 |
-| **S3 백업** | C++ Engine | 장기 백업용 S3 저장 (현재 Redis만) |
+| **잔고 확인** | `order-router` Lambda | 주문 전 Supabase 잔고 검증 (NAT Gateway 필요) |
+| **stale 연결 정리** | Cron Lambda | 주기적으로 만료된 `ws:*` 키 정리 |
+| **차트 상위 타임프레임** | Streamer | 3m/5m/15m 롤업 캐싱 |
 
 ---
 
-*최종 업데이트: 2025-12-13*
+## 변경 이력
+
+| 날짜 | 변경 내용 |
+|------|----------|
+| 2025-12-14 | JWT 인증 (Supabase), testMode 지원, realtime:connections 추가 |
+| 2025-12-14 | symbol-manager → Supernoba-admin으로 통합 |
+| 2025-12-14 | EventBridge 트리거 추가 (trades-backup-10min) |
+| 2025-12-14 | Streamer v3: 50ms/500ms 이중 폴링 분리 |
+| 2025-12-14 | 테스트 콘솔 캔들 테스트 자동화 추가 |
+| 2025-12-13 | C++ Lua Script 캔들 집계 구현 |
+| 2025-12-13 | Hot/Cold 하이브리드 차트 데이터 조회 |
+
+---
+
+*최종 업데이트: 2025-12-14*

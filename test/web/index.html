@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Supernoba API Test Console</title>
+    <!-- TradingView Lightweight Charts -->
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         :root {
             --bg-dark: #0d1117;
@@ -486,7 +488,7 @@
                             <input type="checkbox" id="testModeEnabled" checked style="width: auto;">
                             <span style="font-size: 0.85rem;">🧪 테스트 모드 (JWT 우회)</span>
                         </label>
-                        <small style="color: var(--text-muted); font-size: 0.7rem;">체크 시 로그인 사용자로 인식 (50ms 폴링)</small>
+                        <small style="color: var(--text-muted); font-size: 0.7rem;">체크 시 로그인 사용자로 인식 (100ms 폴링)</small>
                     </div>
                     <div class="btn-group">
                         <button class="btn btn-success" onclick="connectWS()">연결</button>
@@ -514,6 +516,41 @@
                     </div>
                     <div id="mainSubscribedInfo" style="margin-top: 10px; color: var(--accent); font-size: 0.85rem;">
                         호가창: 없음
+                    </div>
+                    
+                    <!-- 실시간 메시지 인디케이터 -->
+                    <div style="margin-top: 12px; background: var(--bg-input); padding: 10px; border-radius: 6px;">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                            <span id="msgIndicator" style="width: 10px; height: 10px; border-radius: 50%; background: #333; transition: background 0.1s;"></span>
+                            <span style="font-size: 0.75rem; color: var(--text-muted);">실시간 데이터</span>
+                            <span id="msgPerSecond" style="font-size: 0.7rem; color: var(--accent); margin-left: auto;">0 msg/s</span>
+                        </div>
+                        <table style="width: 100%; font-size: 0.7rem; border-collapse: collapse;">
+                            <tr>
+                                <td style="padding: 3px; color: var(--text-muted); width: 60px;">유형</td>
+                                <td id="rtType" style="padding: 3px; font-weight: bold;">-</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 3px; color: var(--text-muted);">심볼</td>
+                                <td id="rtSymbol" style="padding: 3px;">-</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 3px; color: var(--text-muted);">최우선매수</td>
+                                <td id="rtBestBid" style="padding: 3px; color: var(--buy);">-</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 3px; color: var(--text-muted);">최우선매도</td>
+                                <td id="rtBestAsk" style="padding: 3px; color: var(--sell);">-</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 3px; color: var(--text-muted);">스프레드</td>
+                                <td id="rtSpread" style="padding: 3px;">-</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 3px; color: var(--text-muted);">시간</td>
+                                <td id="rtTime" style="padding: 3px;">-</td>
+                            </tr>
+                        </table>
                     </div>
                 </div>
 
@@ -605,7 +642,85 @@
                 </div>
             </div>
 
-            <!-- 메시지 로그 -->
+            <!-- 실시간 1분봉 차트 (TradingView) -->
+            <div class="card" style="border-color: var(--accent); grid-column: span 3;">
+                <h2 style="color: var(--accent); display: flex; justify-content: space-between; align-items: center;">
+                    📊 실시간 1분봉 차트
+                    <span id="chartSymbolDisplay" style="font-size: 0.8rem; color: var(--text-muted);">-</span>
+                </h2>
+                
+                <!-- 현재 캔들 정보 -->
+                <div style="display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap;">
+                    <div style="background: var(--bg-input); padding: 8px 12px; border-radius: 6px; flex: 1; min-width: 100px;">
+                        <div style="font-size: 0.7rem; color: var(--text-muted);">시가 (O)</div>
+                        <div id="chartOpen" style="font-size: 1rem; font-weight: bold;">-</div>
+                    </div>
+                    <div style="background: var(--bg-input); padding: 8px 12px; border-radius: 6px; flex: 1; min-width: 100px;">
+                        <div style="font-size: 0.7rem; color: var(--text-muted);">고가 (H)</div>
+                        <div id="chartHigh" style="font-size: 1rem; font-weight: bold; color: var(--buy);">-</div>
+                    </div>
+                    <div style="background: var(--bg-input); padding: 8px 12px; border-radius: 6px; flex: 1; min-width: 100px;">
+                        <div style="font-size: 0.7rem; color: var(--text-muted);">저가 (L)</div>
+                        <div id="chartLow" style="font-size: 1rem; font-weight: bold; color: var(--sell);">-</div>
+                    </div>
+                    <div style="background: var(--bg-input); padding: 8px 12px; border-radius: 6px; flex: 1; min-width: 100px;">
+                        <div style="font-size: 0.7rem; color: var(--text-muted);">종가 (C)</div>
+                        <div id="chartClose" style="font-size: 1rem; font-weight: bold;">-</div>
+                    </div>
+                    <div style="background: var(--bg-input); padding: 8px 12px; border-radius: 6px; flex: 1; min-width: 100px;">
+                        <div style="font-size: 0.7rem; color: var(--text-muted);">거래량</div>
+                        <div id="chartVolume" style="font-size: 1rem; font-weight: bold;">-</div>
+                    </div>
+                </div>
+                
+                <!-- 차트 + 캔들 테이블 영역 -->
+                <div style="display: flex; gap: 12px;">
+                    <!-- TradingView 차트 컨테이너 -->
+                    <div id="tvChartContainer" style="flex: 1; height: 300px; background: var(--bg-dark); border-radius: 8px;"></div>
+                    
+                    <!-- 실시간 캔들 데이터 -->
+                    <div style="width: 180px; background: var(--bg-dark); border-radius: 8px; padding: 12px;">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                            <span id="candleIndicator" style="width: 10px; height: 10px; border-radius: 50%; background: #333;"></span>
+                            <span style="font-size: 0.75rem; font-weight: bold;">🕯️ 캔들</span>
+                        </div>
+                        <table style="width: 100%; font-size: 0.7rem; border-collapse: collapse;">
+                            <tr>
+                                <td style="padding: 4px; color: var(--text-muted);">시간</td>
+                                <td id="candleTime" style="padding: 4px; text-align: right;">-</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 4px; color: var(--text-muted);">시가</td>
+                                <td id="candleO" style="padding: 4px; text-align: right; font-weight: bold;">-</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 4px; color: var(--text-muted);">고가</td>
+                                <td id="candleH" style="padding: 4px; text-align: right; font-weight: bold; color: var(--buy);">-</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 4px; color: var(--text-muted);">저가</td>
+                                <td id="candleL" style="padding: 4px; text-align: right; font-weight: bold; color: var(--sell);">-</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 4px; color: var(--text-muted);">종가</td>
+                                <td id="candleC" style="padding: 4px; text-align: right; font-weight: bold;">-</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 4px; color: var(--text-muted);">거래량</td>
+                                <td id="candleV" style="padding: 4px; text-align: right;">-</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- 차트 정보 -->
+                <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 0.7rem; color: var(--text-muted);">
+                    <span>🕐 마지막 업데이트: <span id="chartLastUpdate">-</span></span>
+                    <span>📈 캔들 수: <span id="chartCandleTotal">0</span>개</span>
+                </div>
+            </div>
+
+
             <div class="card" style="grid-column: span 2;">
                 <h2>메시지 로그</h2>
                 <div class="btn-group" style="margin-bottom: 10px;">
@@ -657,7 +772,7 @@
                 ws.onopen = () => {
                     updateStatus(true);
                     showConnectionInfo(endpoint, userId, testMode);
-                    addLog('INFO', testMode ? '✅ WebSocket 연결됨 (테스트 모드 - 50ms)' : '✅ WebSocket 연결됨 (익명 - 500ms)');
+                    addLog('INFO', testMode ? '✅ WebSocket 연결됨 (테스트 모드 - 100ms)' : '✅ WebSocket 연결됨 (익명 - 500ms)');
                     
                     // 30초 heartbeat 시작
                     heartbeatInterval = setInterval(() => {
@@ -722,7 +837,7 @@
             info.style.display = 'block';
             document.getElementById('connectedUrl').textContent = endpoint;
             document.getElementById('connectedUserId').textContent = userId;
-            document.getElementById('connectedTestMode').textContent = testMode ? '✅ 활성 (50ms 폴링)' : '❌ 비활성 (500ms 폴링)';
+            document.getElementById('connectedTestMode').textContent = testMode ? '✅ 활성 (100ms 폴링)' : '❌ 비활성 (500ms 폴링)';
             document.getElementById('connectedValkeyKey').textContent = `user:${userId}:connections`;
             document.getElementById('connectedTime').textContent = new Date().toLocaleString();
         }
@@ -732,17 +847,62 @@
         }
 
         // 메시지 처리
+        let lastCandleData = null;
+        let candleEventCount = 0;
+        let msgCount = 0;
+        let lastMsgCountReset = Date.now();
+        let indicatorTimeout = null;
+        
+        // 1초마다 msg/s 계산
+        setInterval(() => {
+            const elapsed = (Date.now() - lastMsgCountReset) / 1000;
+            const msgPerSec = Math.round(msgCount / elapsed);
+            document.getElementById('msgPerSecond').textContent = `${msgPerSec} msg/s`;
+            msgCount = 0;
+            lastMsgCountReset = Date.now();
+        }, 1000);
+        
+        function updateIndicator() {
+            const indicator = document.getElementById('msgIndicator');
+            indicator.style.background = '#3fb950';
+            // 1초 동안 데이터가 없으면 꺼짐
+            clearTimeout(indicatorTimeout);
+            indicatorTimeout = setTimeout(() => { indicator.style.background = '#333'; }, 1000);
+        }
+        
+        // 이전 값 유지를 위한 변수
+        let lastRtType = '-', lastRtSymbol = '-', lastRtBestBid = '-', lastRtBestAsk = '-';
+        
+        function updateRealtimeDisplay(type, symbol, bestBid, bestAsk) {
+            if (type) lastRtType = type;
+            if (symbol) lastRtSymbol = symbol;
+            if (bestBid && bestBid !== 0) lastRtBestBid = bestBid;
+            if (bestAsk && bestAsk !== 0) lastRtBestAsk = bestAsk;
+            
+            document.getElementById('rtType').textContent = lastRtType;
+            document.getElementById('rtSymbol').textContent = lastRtSymbol;
+            document.getElementById('rtBestBid').textContent = lastRtBestBid;
+            document.getElementById('rtBestAsk').textContent = lastRtBestAsk;
+            document.getElementById('rtSpread').textContent = (lastRtBestBid !== '-' && lastRtBestAsk !== '-') 
+                ? (parseFloat(lastRtBestAsk) - parseFloat(lastRtBestBid)).toFixed(2) : '-';
+            document.getElementById('rtTime').textContent = new Date().toLocaleTimeString();
+        }
+        
         function handleMessage(msg) {
+            msgCount++;
+            updateIndicator();
+            
             // 컴팩트 포맷 처리 (e=event, s=symbol)
             if (msg.e === 'd') {
-                // DEPTH 업데이트: {"e":"d","s":"SYM","t":123,"b":[[p,q],...], "a":[[p,q],...]}
-                addLog('DEPTH', JSON.stringify(msg));
+                // DEPTH 업데이트 - 로그에 표시하지 않음 (너무 많음)
+                const bestBid = msg.b?.[0]?.[0] || 0;
+                const bestAsk = msg.a?.[0]?.[0] || 0;
+                
                 updateOrderbook(msg.s, { asks: msg.a, bids: msg.b });
+                updateRealtimeDisplay('DEPTH', msg.s, bestBid, bestAsk);
                 
                 // Sub 전광판 업데이트 (depth에서 가격 추출)
                 if (subSymbols.has(msg.s)) {
-                    const bestBid = msg.b?.[0]?.[0] || 0;
-                    const bestAsk = msg.a?.[0]?.[0] || 0;
                     const midPrice = bestBid && bestAsk ? (bestBid + bestAsk) / 2 : bestBid || bestAsk;
                     subSymbols.set(msg.s, {
                         price: midPrice,
@@ -751,9 +911,21 @@
                     });
                     renderTickerGrid();
                 }
+            } else if (msg.e === 'candle') {
+                // 실시간 캔들 업데이트 - 캔들 테이블에 추가
+                candleEventCount++;
+                lastCandleData = msg;
+                updateLiveCandleChart(msg);
+                updateCandleLogTable(msg);
+                updateRealtimeDisplay('CANDLE', msg.s, '-', '-');
+                
+            } else if (msg.e === 'candle_close') {
+                // 캔들 마감 알림
+                updateLiveCandleChart(msg);
+                addClosedCandleToHistory(msg);
+                
             } else if (msg.e === 't') {
-                // TICKER 업데이트: {"e":"t","s":"SYM","p":150,"c":2.5}
-                addLog('TICKER', JSON.stringify(msg));
+                // TICKER 업데이트 - 로그에 표시하지 않음
                 if (subSymbols.has(msg.s)) {
                     subSymbols.set(msg.s, {
                         price: msg.p,
@@ -763,19 +935,22 @@
                     renderTickerGrid();
                 }
             } else if (msg.type === 'DEPTH') {
-                // 레거시 포맷 호환
-                addLog(msg.type, JSON.stringify(msg, null, 2));
+                // 레거시 포맷 호환 - 로그에 표시하지 않음
                 updateOrderbook(msg.symbol, msg.data);
             } else if (msg.subscribed) {
-                // 구독 완료 응답
                 addLog('SUCCESS', `✅ 구독 완료: ${msg.subscribed.join(', ')}`);
             } else if (msg.message === 'Forbidden') {
                 // ping 응답 (무시)
             } else if (msg.main || msg.sub) {
-                // 신버전 구독 응답
                 addLog('SUCCESS', `✅ main=${msg.main || '-'}, sub=${JSON.stringify(msg.sub || [])}`);
+            } else if (msg.e === 'order' || msg.type === 'order') {
+                // 주문 이벤트 - 로그에 표시
+                addLog('ORDER', JSON.stringify(msg));
+            } else if (msg.e === 'fill' || msg.type === 'fill') {
+                // 체결 이벤트 - 로그에 표시
+                addLog('FILL', JSON.stringify(msg));
             } else {
-                addLog('INFO', JSON.stringify(msg, null, 2));
+                // 기타 메시지는 무시
             }
         }
 
@@ -1299,46 +1474,63 @@
             document.getElementById('candleCurrentPrice').textContent = candleCurrentPrice;
             document.getElementById('candleNextTarget').textContent = nextTarget;
             
-            // 체결을 발생시키려면 BUY와 SELL 모두 같은 가격에 넣어야 함
             const endpoint = document.getElementById('orderEndpoint').value;
             const apiKey = document.getElementById('apiKey').value;
             const symbol = document.getElementById('orderSymbol').value || 'TEST';
             
-            // 매수 + 매도 동시 주문 (체결 발생)
             try {
-                const buyOrder = {
+                const orders = [];
+                
+                // 1. 체결용 매수+매도 (현재 가격에서 매칭)
+                orders.push({
                     user_id: 'candle-test-buyer',
                     symbol: symbol,
                     side: 'BUY',
                     price: candleCurrentPrice,
                     quantity: 10,
                     order_type: 'LIMIT'
-                };
-                
-                const sellOrder = {
+                });
+                orders.push({
                     user_id: 'candle-test-seller',
                     symbol: symbol,
                     side: 'SELL',
                     price: candleCurrentPrice,
                     quantity: 10,
                     order_type: 'LIMIT'
-                };
-                
-                // 매수 먼저
-                await fetch(endpoint, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-                    body: JSON.stringify(buyOrder)
                 });
                 
-                // 매도 (체결 발생)
-                await fetch(endpoint, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-                    body: JSON.stringify(sellOrder)
-                });
+                // 2. 호가창 채우기: 현재 가격 주변에 5단계 매수/매도 주문
+                for (let i = 1; i <= 5; i++) {
+                    // 매수 호가 (현재가 아래로)
+                    orders.push({
+                        user_id: `orderbook-bid-${i}`,
+                        symbol: symbol,
+                        side: 'BUY',
+                        price: candleCurrentPrice - i,
+                        quantity: 50 + Math.floor(Math.random() * 100),
+                        order_type: 'LIMIT'
+                    });
+                    // 매도 호가 (현재가 위로)
+                    orders.push({
+                        user_id: `orderbook-ask-${i}`,
+                        symbol: symbol,
+                        side: 'SELL',
+                        price: candleCurrentPrice + i,
+                        quantity: 50 + Math.floor(Math.random() * 100),
+                        order_type: 'LIMIT'
+                    });
+                }
                 
-                candleOrderCount += 2;
+                // 모든 주문 제출 (순차 처리로 호가창 형성)
+                for (const order of orders) {
+                    await fetch(endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+                        body: JSON.stringify(order)
+                    });
+                }
+                
+                candleOrderCount += orders.length;
                 document.getElementById('candleOrderCount').textContent = candleOrderCount;
                 
             } catch (e) {
@@ -1356,6 +1548,337 @@
                 
                 addLog('INFO', `캔들 테스트 중지: 총 ${candleOrderCount}개 주문`);
             }
+        }
+
+        // ======== 실시간 캔들 디스플레이 ========
+        let candleIndicatorTimeout = null;
+        
+        function updateCandleLogTable(msg) {
+            const isBullish = parseFloat(msg.c) >= parseFloat(msg.o);
+            
+            // 인디케이터 업데이트 (데이터가 오는 동안 켜짐)
+            const indicator = document.getElementById('candleIndicator');
+            indicator.style.background = '#3fb950';
+            clearTimeout(candleIndicatorTimeout);
+            candleIndicatorTimeout = setTimeout(() => { indicator.style.background = '#333'; }, 1000);
+            
+            // 캔들 데이터 표시
+            document.getElementById('candleTime').textContent = new Date().toLocaleTimeString();
+            document.getElementById('candleO').textContent = msg.o;
+            document.getElementById('candleH').textContent = msg.h;
+            document.getElementById('candleL').textContent = msg.l;
+            document.getElementById('candleC').textContent = msg.c;
+            document.getElementById('candleC').style.color = isBullish ? 'var(--buy)' : 'var(--sell)';
+            document.getElementById('candleV').textContent = msg.v || '-';
+        }
+
+        // ======== TradingView 실시간 1분봉 차트 ========
+        let tvChart = null;
+        let candleSeries = null;
+        let volumeSeries = null;
+        let candleData = [];  // {time, open, high, low, close} 형태
+        let volumeData = [];
+        const MAX_CANDLES = 600;  // 최대 10분 × 60초 = 600개 (1초 단위로 가정)
+        
+        // TradingView 차트 초기화
+        function initTradingViewChart() {
+            if (tvChart) return;  // 이미 초기화됨
+            
+            const container = document.getElementById('tvChartContainer');
+            if (!container || typeof LightweightCharts === 'undefined') {
+                console.log('TradingView 차트 라이브러리 로딩 대기 중...');
+                setTimeout(initTradingViewChart, 100);
+                return;
+            }
+            
+            tvChart = LightweightCharts.createChart(container, {
+                width: container.clientWidth,
+                height: 300,
+                layout: {
+                    background: { type: 'solid', color: '#0d1117' },
+                    textColor: '#8b949e',
+                },
+                grid: {
+                    vertLines: { color: '#21262d' },
+                    horzLines: { color: '#21262d' },
+                },
+                crosshair: {
+                    mode: LightweightCharts.CrosshairMode.Normal,
+                },
+                rightPriceScale: {
+                    borderColor: '#30363d',
+                },
+                timeScale: {
+                    borderColor: '#30363d',
+                    timeVisible: true,
+                    secondsVisible: false,
+                },
+            });
+            
+            // 캔들스틱 시리즈
+            candleSeries = tvChart.addCandlestickSeries({
+                upColor: '#3fb950',
+                downColor: '#f85149',
+                borderUpColor: '#3fb950',
+                borderDownColor: '#f85149',
+                wickUpColor: '#3fb950',
+                wickDownColor: '#f85149',
+            });
+            
+            // 거래량 시리즈
+            volumeSeries = tvChart.addHistogramSeries({
+                color: '#26a69a',
+                priceFormat: { type: 'volume' },
+                priceScaleId: '',
+            });
+            volumeSeries.priceScale().applyOptions({
+                scaleMargins: { top: 0.8, bottom: 0 },
+            });
+            
+            // 리사이즈 처리
+            new ResizeObserver(() => {
+                if (tvChart) {
+                    tvChart.applyOptions({ width: container.clientWidth });
+                }
+            }).observe(container);
+            
+            console.log('TradingView 차트 초기화 완료');
+        }
+        
+        function updateLiveCandleChart(msg) {
+            // 차트 초기화 (처음 호출 시)
+            if (!tvChart) initTradingViewChart();
+            
+            const o = parseFloat(msg.o);
+            const h = parseFloat(msg.h);
+            const l = parseFloat(msg.l);
+            const c = parseFloat(msg.c);
+            const v = parseFloat(msg.v) || 0;
+            const t = parseInt(msg.t);  // 유닉스 타임스탬프 (초)
+            
+            // OHLCV 표시 업데이트
+            document.getElementById('chartSymbolDisplay').textContent = msg.s;
+            document.getElementById('chartOpen').textContent = o.toFixed(2);
+            document.getElementById('chartHigh').textContent = h.toFixed(2);
+            document.getElementById('chartLow').textContent = l.toFixed(2);
+            document.getElementById('chartClose').textContent = c.toFixed(2);
+            document.getElementById('chartVolume').textContent = v.toFixed(0);
+            document.getElementById('chartLastUpdate').textContent = new Date().toLocaleTimeString();
+            
+            // 종가 색상 (시가 대비)
+            const isBullish = c >= o;
+            document.getElementById('chartClose').style.color = isBullish ? 'var(--buy)' : 'var(--sell)';
+            
+            // TradingView 차트 업데이트
+            if (candleSeries) {
+                const candlePoint = { time: t, open: o, high: h, low: l, close: c };
+                const volumePoint = { time: t, value: v, color: isBullish ? 'rgba(63, 185, 80, 0.5)' : 'rgba(248, 81, 73, 0.5)' };
+                
+                // 기존 데이터에서 같은 시간의 캔들 찾기
+                const existingIndex = candleData.findIndex(d => d.time === t);
+                if (existingIndex >= 0) {
+                    // 업데이트
+                    candleData[existingIndex] = candlePoint;
+                    volumeData[existingIndex] = volumePoint;
+                } else {
+                    // 새 캔들 추가
+                    candleData.push(candlePoint);
+                    volumeData.push(volumePoint);
+                    
+                    // 최대 개수 유지
+                    if (candleData.length > MAX_CANDLES) {
+                        candleData.shift();
+                        volumeData.shift();
+                    }
+                }
+                
+                // 차트에 반영
+                candleSeries.update(candlePoint);
+                volumeSeries.update(volumePoint);
+                
+                document.getElementById('chartCandleTotal').textContent = candleData.length;
+            }
+        }
+        
+        function addClosedCandleToHistory(msg) {
+            // candle_close 이벤트 시 - 마감된 캔들 (현재는 update만으로 충분)
+            // 차트는 이미 updateLiveCandleChart에서 업데이트됨
+            document.getElementById('chartCandleTotal').textContent = candleData.length;
+        }
+
+        // 페이지 로드 시 차트 초기화
+        window.addEventListener('load', () => {
+            setTimeout(initTradingViewChart, 500);
+        });
+
+        async function fetchChartData() {
+            const endpoint = document.getElementById('chartEndpoint').value;
+            const symbol = document.getElementById('chartSymbol').value || 'TEST';
+            const tf = document.getElementById('chartTimeframe').value;
+            const limit = parseInt(document.getElementById('chartLimit').value) || 30;
+            
+            if (!endpoint) {
+                addLog('ERROR', 'Chart API 엔드포인트를 입력하세요');
+                return;
+            }
+            
+            const url = `${endpoint}?symbol=${symbol}&interval=${tf}&limit=${limit}`;
+            addLog('INFO', `차트 조회: ${url}`);
+            
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // Step 4 진단 업데이트
+                    document.getElementById('stepIcon4').textContent = '✅';
+                    document.getElementById('stepResult4').textContent = response.ok ? '조회 성공' : '조회 실패';
+                    
+                    const candles = data.candles || data.data || data || [];
+                    document.getElementById('stepValue4').textContent = `${candles.length}개`;
+                    
+                    addLog('INFO', `차트 데이터: ${candles.length}개 캔들 수신`);
+                    
+                    // Step 3 업데이트 (DynamoDB 데이터 있는지 확인)
+                    const coldCount = data.coldCount || 0;
+                    const hotCount = data.hotCount || candles.length;
+                    if (coldCount > 0) {
+                        document.getElementById('stepIcon3').textContent = '✅';
+                        document.getElementById('stepResult3').textContent = `Cold: ${coldCount}개`;
+                        document.getElementById('stepValue3').textContent = 'DynamoDB 백업됨';
+                    } else if (candles.length > 0) {
+                        document.getElementById('stepIcon3').textContent = '⏳';
+                        document.getElementById('stepResult3').textContent = '백업 대기 중 (10분 주기)';
+                        document.getElementById('stepValue3').textContent = `Hot: ${hotCount}개`;
+                    }
+                    
+                    // 차트 렌더링
+                    renderChartResult(candles, symbol, tf);
+                } else {
+                    addLog('ERROR', `차트 조회 실패: ${JSON.stringify(data)}`);
+                    document.getElementById('stepIcon4').textContent = '❌';
+                    document.getElementById('stepResult4').textContent = data.error || '조회 실패';
+                }
+            } catch (e) {
+                addLog('ERROR', `차트 API 에러: ${e.message}`);
+                document.getElementById('stepIcon4').textContent = '❌';
+                document.getElementById('stepResult4').textContent = e.message;
+            }
+        }
+        
+        function renderChartResult(candles, symbol, tf) {
+            const resultDiv = document.getElementById('chartResult');
+            resultDiv.style.display = 'block';
+            
+            document.getElementById('chartCandleCount').innerHTML = `
+                <span style="color: var(--accent);">📊 ${symbol} [${tf}]</span> - 
+                총 <b>${candles.length}</b>개 캔들
+            `;
+            
+            if (candles.length === 0) {
+                document.getElementById('candleContainer').innerHTML = '<div style="color: var(--text-muted);">데이터 없음</div>';
+                document.getElementById('chartTableBody').innerHTML = '';
+                return;
+            }
+            
+            // 가격 범위 계산
+            const prices = candles.flatMap(c => [parseFloat(c.o || c.open), parseFloat(c.h || c.high), parseFloat(c.l || c.low), parseFloat(c.c || c.close)]);
+            const minPrice = Math.min(...prices);
+            const maxPrice = Math.max(...prices);
+            const range = maxPrice - minPrice || 1;
+            
+            // 캔들차트 시각화
+            const container = document.getElementById('candleContainer');
+            container.innerHTML = '';
+            
+            candles.forEach((c, i) => {
+                const open = parseFloat(c.o || c.open || 0);
+                const high = parseFloat(c.h || c.high || 0);
+                const low = parseFloat(c.l || c.low || 0);
+                const close = parseFloat(c.c || c.close || 0);
+                
+                const isBullish = close >= open;
+                const bodyTop = Math.max(open, close);
+                const bodyBottom = Math.min(open, close);
+                
+                const candleHeight = 120;
+                const highPos = ((high - minPrice) / range) * candleHeight;
+                const lowPos = ((low - minPrice) / range) * candleHeight;
+                const bodyTopPos = ((bodyTop - minPrice) / range) * candleHeight;
+                const bodyBottomPos = ((bodyBottom - minPrice) / range) * candleHeight;
+                
+                const candleEl = document.createElement('div');
+                candleEl.style.cssText = `
+                    position: relative;
+                    width: 8px;
+                    height: ${candleHeight}px;
+                    flex-shrink: 0;
+                `;
+                
+                // 위 꼬리
+                const upperWick = document.createElement('div');
+                upperWick.style.cssText = `
+                    position: absolute;
+                    left: 3.5px;
+                    width: 1px;
+                    bottom: ${bodyTopPos}px;
+                    height: ${highPos - bodyTopPos}px;
+                    background: ${isBullish ? 'var(--buy)' : 'var(--sell)'};
+                `;
+                
+                // 아래 꼬리
+                const lowerWick = document.createElement('div');
+                lowerWick.style.cssText = `
+                    position: absolute;
+                    left: 3.5px;
+                    width: 1px;
+                    bottom: ${lowPos}px;
+                    height: ${bodyBottomPos - lowPos}px;
+                    background: ${isBullish ? 'var(--buy)' : 'var(--sell)'};
+                `;
+                
+                // 몸통
+                const body = document.createElement('div');
+                body.style.cssText = `
+                    position: absolute;
+                    left: 0;
+                    width: 8px;
+                    bottom: ${bodyBottomPos}px;
+                    height: ${Math.max(1, bodyTopPos - bodyBottomPos)}px;
+                    background: ${isBullish ? 'var(--buy)' : 'var(--sell)'};
+                    border-radius: 1px;
+                `;
+                
+                candleEl.appendChild(upperWick);
+                candleEl.appendChild(lowerWick);
+                candleEl.appendChild(body);
+                candleEl.title = `O:${open} H:${high} L:${low} C:${close}`;
+                container.appendChild(candleEl);
+            });
+            
+            // 테이블 렌더링
+            const tbody = document.getElementById('chartTableBody');
+            tbody.innerHTML = candles.map(c => {
+                const time = c.t || c.time || c.timestamp;
+                const timeStr = time ? new Date(parseInt(time) * 1000).toLocaleString() : '-';
+                const o = c.o || c.open || '-';
+                const h = c.h || c.high || '-';
+                const l = c.l || c.low || '-';
+                const close = c.c || c.close || '-';
+                const v = c.v || c.volume || '-';
+                const isBullish = parseFloat(close) >= parseFloat(o);
+                
+                return `
+                    <tr style="color: ${isBullish ? 'var(--buy)' : 'var(--sell)'};">
+                        <td style="padding: 3px; border-bottom: 1px solid var(--border);">${timeStr}</td>
+                        <td style="padding: 3px; border-bottom: 1px solid var(--border);">${o}</td>
+                        <td style="padding: 3px; border-bottom: 1px solid var(--border);">${h}</td>
+                        <td style="padding: 3px; border-bottom: 1px solid var(--border);">${l}</td>
+                        <td style="padding: 3px; border-bottom: 1px solid var(--border);">${close}</td>
+                        <td style="padding: 3px; border-bottom: 1px solid var(--border);">${v}</td>
+                    </tr>
+                `;
+            }).reverse().join('');
         }
 
         // 초기화
