@@ -663,12 +663,25 @@
                 </div>
             </div>
 
-            <!-- 실시간 1분봉 차트 (TradingView) -->
+            <!-- 실시간 차트 (TradingView Lightweight Charts) -->
             <div class="card" style="border-color: var(--accent); grid-column: span 3;">
                 <h2 style="color: var(--accent); display: flex; justify-content: space-between; align-items: center;">
-                    📊 실시간 1분봉 차트
+                    📊 캔들스틱 차트
                     <span id="chartSymbolDisplay" style="font-size: 0.8rem; color: var(--text-muted);">-</span>
                 </h2>
+                
+                <!-- 타임프레임 선택 버튼 -->
+                <div style="display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap;">
+                    <button class="tf-btn" data-tf="1m" onclick="selectTimeframe('1m')" style="padding: 6px 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--accent); color: #fff; cursor: pointer; font-weight: bold;">1분</button>
+                    <button class="tf-btn" data-tf="3m" onclick="selectTimeframe('3m')" style="padding: 6px 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text); cursor: pointer;">3분</button>
+                    <button class="tf-btn" data-tf="5m" onclick="selectTimeframe('5m')" style="padding: 6px 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text); cursor: pointer;">5분</button>
+                    <button class="tf-btn" data-tf="15m" onclick="selectTimeframe('15m')" style="padding: 6px 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text); cursor: pointer;">15분</button>
+                    <button class="tf-btn" data-tf="30m" onclick="selectTimeframe('30m')" style="padding: 6px 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text); cursor: pointer;">30분</button>
+                    <button class="tf-btn" data-tf="1h" onclick="selectTimeframe('1h')" style="padding: 6px 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text); cursor: pointer;">1시간</button>
+                    <button class="tf-btn" data-tf="4h" onclick="selectTimeframe('4h')" style="padding: 6px 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text); cursor: pointer;">4시간</button>
+                    <button class="tf-btn" data-tf="1d" onclick="selectTimeframe('1d')" style="padding: 6px 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text); cursor: pointer;">1일</button>
+                    <span id="tfLoadingIndicator" style="display: none; color: var(--accent); font-size: 0.8rem; margin-left: 10px;">⏳ 로딩...</span>
+                </div>
                 
                 <!-- 현재 캔들 정보 -->
                 <div style="display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap;">
@@ -1712,13 +1725,179 @@
             document.getElementById('candleV').textContent = msg.v || '-';
         }
 
-        // ======== TradingView 실시간 1분봉 차트 ========
+        // ======== TradingView Lightweight Charts (타임프레임 지원) ========
         let tvChart = null;
         let candleSeries = null;
         let volumeSeries = null;
-        let candleData = [];  // {time, open, high, low, close} 형태
+        let candleData = [];  // 현재 표시 중인 캔들 데이터 (선택된 타임프레임)
         let volumeData = [];
-        const MAX_CANDLES = 600;  // 최대 10분 × 60초 = 600개 (1초 단위로 가정)
+        let oneMinCandleBuffer = [];  // 수신한 1분봉 버퍼 (실시간 집계용)
+        const MAX_CANDLES = 500;
+        
+        // === 타임프레임 관리 ===
+        let selectedTimeframe = '1m';  // 현재 선택된 타임프레임
+        let chartSymbol = '';          // 현재 차트 심볼
+        let apiActiveCandle = null;    // API에서 받은 활성 캔들 (병합 기준점)
+        
+        // 타임프레임별 초 단위 매핑
+        const TIMEFRAME_SECONDS = {
+            '1m': 60, '3m': 180, '5m': 300, '15m': 900,
+            '30m': 1800, '1h': 3600, '4h': 14400, '1d': 86400
+        };
+        
+        // 타임프레임 선택 함수 (버튼 클릭 시)
+        async function selectTimeframe(tf) {
+            selectedTimeframe = tf;
+            
+            // 버튼 스타일 업데이트
+            document.querySelectorAll('.tf-btn').forEach(btn => {
+                if (btn.dataset.tf === tf) {
+                    btn.style.background = 'var(--accent)';
+                    btn.style.color = '#fff';
+                    btn.style.fontWeight = 'bold';
+                } else {
+                    btn.style.background = 'var(--bg-input)';
+                    btn.style.color = 'var(--text)';
+                    btn.style.fontWeight = 'normal';
+                }
+            });
+            
+            // 로딩 표시
+            document.getElementById('tfLoadingIndicator').style.display = 'inline';
+            
+            // 심볼이 있으면 해당 타임프레임으로 차트 데이터 다시 로드
+            if (chartSymbol) {
+                await loadChartDataForTimeframe(chartSymbol, tf);
+            }
+            
+            document.getElementById('tfLoadingIndicator').style.display = 'none';
+            addLog('INFO', `[CHART] 타임프레임 변경: ${tf}`);
+        }
+        
+        // Chart API에서 데이터 로드 (타임프레임별)
+        async function loadChartDataForTimeframe(symbol, interval) {
+            if (!candleSeries) return;
+            
+            const chartEndpoint = document.getElementById('chartEndpoint')?.value || 
+                'https://4xs6g4w8l6.execute-api.ap-northeast-2.amazonaws.com/restV2/chart';
+            const url = `${chartEndpoint}?symbol=${symbol}&interval=${interval}&limit=200`;
+            
+            try {
+                const response = await fetch(url);
+                const result = await response.json();
+                
+                if (response.ok && result.data && result.data.length > 0) {
+                    // TradingView 권장: setData()로 전체 데이터 교체
+                    const candles = result.data.map(c => ({
+                        time: c.time,
+                        open: parseFloat(c.open),
+                        high: parseFloat(c.high),
+                        low: parseFloat(c.low),
+                        close: parseFloat(c.close)
+                    }));
+                    
+                    const volumes = result.data.map(c => ({
+                        time: c.time,
+                        value: parseFloat(c.volume) || 0,
+                        color: parseFloat(c.close) >= parseFloat(c.open) 
+                            ? 'rgba(63, 185, 80, 0.5)' 
+                            : 'rgba(248, 81, 73, 0.5)'
+                    }));
+                    
+                    candleData = candles;
+                    volumeData = volumes;
+                    
+                    // 활성 캔들 추적 (실시간 병합용)
+                    const lastCandle = result.data[result.data.length - 1];
+                    if (lastCandle && lastCandle.active) {
+                        apiActiveCandle = {
+                            time: lastCandle.time,
+                            open: parseFloat(lastCandle.open),
+                            high: parseFloat(lastCandle.high),
+                            low: parseFloat(lastCandle.low),
+                            close: parseFloat(lastCandle.close),
+                            volume: parseFloat(lastCandle.volume) || 0
+                        };
+                        addLog('INFO', `[CHART] 활성 캔들 기준점 설정: t=${apiActiveCandle.time}`);
+                    } else {
+                        apiActiveCandle = null;
+                    }
+                    
+                    candleSeries.setData(candles);
+                    volumeSeries.setData(volumes);
+                    tvChart.timeScale().fitContent();
+                    
+                    document.getElementById('chartCandleTotal').textContent = `${candles.length} (${interval})`;
+                    addLog('SUCCESS', `[CHART] ${symbol} ${interval}: ${candles.length}개 캔들 로드`);
+                } else {
+                    // API 데이터 없음 → 1분봉 버퍼에서 집계하여 표시
+                    addLog('WARN', `[CHART] API 데이터 없음 → 버퍼에서 집계`);
+                    
+                    if (oneMinCandleBuffer.length > 0) {
+                        const intervalSeconds = TIMEFRAME_SECONDS[interval] || 60;
+                        const aggregated = aggregateToTimeframe(oneMinCandleBuffer, intervalSeconds);
+                        
+                        const candles = aggregated.map(c => ({
+                            time: c.time,
+                            open: c.open,
+                            high: c.high,
+                            low: c.low,
+                            close: c.close
+                        }));
+                        
+                        const volumes = aggregated.map(c => ({
+                            time: c.time,
+                            value: c.volume || 0,
+                            color: c.close >= c.open 
+                                ? 'rgba(63, 185, 80, 0.5)' 
+                                : 'rgba(248, 81, 73, 0.5)'
+                        }));
+                        
+                        candleData = candles;
+                        volumeData = volumes;
+                        
+                        candleSeries.setData(candles);
+                        volumeSeries.setData(volumes);
+                        tvChart.timeScale().fitContent();
+                        
+                        document.getElementById('chartCandleTotal').textContent = `${candles.length} (${interval}, 버퍼)`;
+                        addLog('INFO', `[CHART] 버퍼에서 ${candles.length}개 캔들 집계`);
+                    }
+                }
+            } catch (error) {
+                addLog('ERROR', `[CHART] API 오류: ${error.message}`);
+            }
+        }
+        
+        // 1분봉을 선택된 타임프레임으로 집계
+        function aggregateToTimeframe(oneMinCandles, intervalSeconds) {
+            if (intervalSeconds === 60) return oneMinCandles;  // 1분봉은 그대로
+            
+            const grouped = new Map();
+            
+            for (const c of oneMinCandles) {
+                const alignedTime = Math.floor(c.time / intervalSeconds) * intervalSeconds;
+                
+                if (!grouped.has(alignedTime)) {
+                    grouped.set(alignedTime, {
+                        time: alignedTime,
+                        open: c.open,
+                        high: c.high,
+                        low: c.low,
+                        close: c.close,
+                        volume: c.volume || 0
+                    });
+                } else {
+                    const existing = grouped.get(alignedTime);
+                    existing.high = Math.max(existing.high, c.high);
+                    existing.low = Math.min(existing.low, c.low);
+                    existing.close = c.close;
+                    existing.volume += c.volume || 0;
+                }
+            }
+            
+            return Array.from(grouped.values()).sort((a, b) => a.time - b.time);
+        }
         
         // TradingView 차트 초기화
         function initTradingViewChart() {
@@ -1796,8 +1975,13 @@
             const v = parseFloat(msg.v) || 0;
             const t = parseInt(msg.t);  // 유닉스 타임스탬프 (초)
             
-            // OHLCV 표시 업데이트
-            document.getElementById('chartSymbolDisplay').textContent = msg.s;
+            // 심볼 저장 (타임프레임 전환에 사용)
+            if (msg.s && msg.s !== chartSymbol) {
+                chartSymbol = msg.s;
+            }
+            
+            // OHLCV 표시 업데이트 (1분봉 기준 - 실시간 정보)
+            document.getElementById('chartSymbolDisplay').textContent = `${msg.s} (${selectedTimeframe})`;
             document.getElementById('chartOpen').textContent = o.toFixed(2);
             document.getElementById('chartHigh').textContent = h.toFixed(2);
             document.getElementById('chartLow').textContent = l.toFixed(2);
@@ -1814,41 +1998,89 @@
             document.getElementById('rawJsonTimestamp').textContent = `수신: ${new Date().toLocaleTimeString()} | 캔들 시작: ${candleTime}`;
             document.getElementById('rawCandleJson').textContent = JSON.stringify(msg, null, 2);
             
-            // TradingView 차트 업데이트
-            if (candleSeries) {
-                const candlePoint = { time: t, open: o, high: h, low: l, close: c };
-                const volumePoint = { time: t, value: v, color: isBullish ? 'rgba(63, 185, 80, 0.5)' : 'rgba(248, 81, 73, 0.5)' };
-                
-                // 기존 데이터에서 같은 시간의 캔들 찾기
-                const existingIndex = candleData.findIndex(d => d.time === t);
-                if (existingIndex >= 0) {
-                    // 업데이트
-                    candleData[existingIndex] = candlePoint;
-                    volumeData[existingIndex] = volumePoint;
-                } else {
-                    // 새 캔들 추가
-                    candleData.push(candlePoint);
-                    volumeData.push(volumePoint);
-                    
-                    // 최대 개수 유지
-                    if (candleData.length > MAX_CANDLES) {
-                        candleData.shift();
-                        volumeData.shift();
-                    }
+            // 1분봉 버퍼에 저장 (실시간 집계용)
+            const oneMinCandle = { time: t, open: o, high: h, low: l, close: c, volume: v };
+            const existingIdx = oneMinCandleBuffer.findIndex(d => d.time === t);
+            if (existingIdx >= 0) {
+                oneMinCandleBuffer[existingIdx] = oneMinCandle;
+            } else {
+                oneMinCandleBuffer.push(oneMinCandle);
+                // 최대 120개 유지 (2시간치 1분봉)
+                if (oneMinCandleBuffer.length > 120) {
+                    oneMinCandleBuffer.shift();
                 }
+            }
+            
+            // TradingView 차트 업데이트 (선택된 타임프레임으로 집계)
+            if (candleSeries) {
+                const intervalSeconds = TIMEFRAME_SECONDS[selectedTimeframe] || 60;
+                const alignedTime = Math.floor(t / intervalSeconds) * intervalSeconds;
                 
-                // 차트에 반영
-                candleSeries.update(candlePoint);
-                volumeSeries.update(volumePoint);
+                // 현재 기간에 해당하는 1분봉들 필터링
+                const periodCandles = oneMinCandleBuffer.filter(c => 
+                    Math.floor(c.time / intervalSeconds) * intervalSeconds === alignedTime
+                );
                 
-                document.getElementById('chartCandleTotal').textContent = candleData.length;
+                if (periodCandles.length > 0) {
+                    // 집계
+                    periodCandles.sort((a, b) => a.time - b.time);
+                    let aggregated = {
+                        time: alignedTime,
+                        open: periodCandles[0].open,
+                        high: Math.max(...periodCandles.map(c => c.high)),
+                        low: Math.min(...periodCandles.map(c => c.low)),
+                        close: periodCandles[periodCandles.length - 1].close
+                    };
+                    let aggregatedVolume = periodCandles.reduce((sum, c) => sum + (c.volume || 0), 0);
+                    
+                    // API 활성 캔들과 병합 (같은 기간인 경우)
+                    if (apiActiveCandle && apiActiveCandle.time === alignedTime) {
+                        // API 시가 유지, 고/저가는 최대/최소로 병합
+                        aggregated.open = apiActiveCandle.open;
+                        aggregated.high = Math.max(apiActiveCandle.high, aggregated.high);
+                        aggregated.low = Math.min(apiActiveCandle.low, aggregated.low);
+                        aggregatedVolume = Math.max(apiActiveCandle.volume, aggregatedVolume);
+                    }
+                    
+                    const candlePoint = aggregated;
+                    const volumePoint = { 
+                        time: alignedTime, 
+                        value: aggregatedVolume, 
+                        color: aggregated.close >= aggregated.open 
+                            ? 'rgba(63, 185, 80, 0.5)' 
+                            : 'rgba(248, 81, 73, 0.5)' 
+                    };
+                    
+                    // candleData 배열에서 같은 시간 찾기
+                    const dataIdx = candleData.findIndex(d => d.time === alignedTime);
+                    if (dataIdx >= 0) {
+                        candleData[dataIdx] = candlePoint;
+                        volumeData[dataIdx] = volumePoint;
+                    } else {
+                        candleData.push(candlePoint);
+                        volumeData.push(volumePoint);
+                        
+                        // 최대 개수 유지
+                        if (candleData.length > MAX_CANDLES) {
+                            candleData.shift();
+                            volumeData.shift();
+                        }
+                    }
+                    
+                    // TradingView 권장: update()로 마지막 캔들만 업데이트
+                    candleSeries.update(candlePoint);
+                    volumeSeries.update(volumePoint);
+                    
+                    document.getElementById('chartCandleTotal').textContent = `${candleData.length} (${selectedTimeframe})`;
+                }
             }
         }
         
         function addClosedCandleToHistory(msg) {
-            // candle_close 이벤트 시 - 마감된 캔들 (현재는 update만으로 충분)
-            // 차트는 이미 updateLiveCandleChart에서 업데이트됨
-            document.getElementById('chartCandleTotal').textContent = candleData.length;
+            // candle_close 이벤트 시 - 마감된 1분봉
+            // 1분봉 버퍼에서 제거하고 DynamoDB에 저장됨 (backup-handler에서 처리)
+            // 차트 데이터는 유지
+            document.getElementById('chartCandleTotal').textContent = `${candleData.length} (${selectedTimeframe})`;
         }
 
         // 페이지 로드 시 차트 초기화

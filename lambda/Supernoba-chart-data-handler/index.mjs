@@ -102,15 +102,16 @@ async function getCompletedCandles(symbol, interval, limit) {
   }
 }
 
-// === 활성 캔들 계산 (Valkey 1분봉에서 현재 기간 집계) ===
+// === 활성 캔들 계산 (Valkey + DynamoDB 1분봉에서 현재 기간 집계) ===
+// 백업 후 Valkey closed 리스트가 비어있을 수 있으므로 DynamoDB도 확인
 async function computeActiveCandle(symbol, intervalSeconds) {
   try {
     const now = Math.floor(Date.now() / 1000);
     const periodStart = Math.floor(now / intervalSeconds) * intervalSeconds;
     
-    // 현재 기간 내의 마감된 1분봉 조회
+    // 1. Valkey에서 마감된 1분봉 조회 (최근 데이터)
     const closedList = await valkey.lrange(`candle:closed:1m:${symbol}`, 0, -1);
-    const closedCandles = closedList
+    const valkeyClosedCandles = closedList
       .map(c => { try { return JSON.parse(c); } catch { return null; } })
       .filter(c => c !== null)
       .filter(c => parseInt(c.t) >= periodStart && parseInt(c.t) < periodStart + intervalSeconds)
@@ -123,14 +124,57 @@ async function computeActiveCandle(symbol, intervalSeconds) {
         v: parseFloat(c.v) || 0
       }));
     
-    // 현재 진행 중인 1분봉 조회
+    // 2. DynamoDB에서 현재 기간 1분봉 조회 (백업된 데이터 - Valkey 비었을 때 대비)
+    let dbCandles = [];
+    if (valkeyClosedCandles.length === 0) {
+      // Valkey가 비어있으면 DynamoDB에서 1분봉 조회
+      try {
+        const result = await dynamodb.send(new QueryCommand({
+          TableName: DYNAMODB_TABLE,
+          KeyConditionExpression: 'pk = :pk AND sk BETWEEN :start AND :end',
+          ExpressionAttributeValues: {
+            ':pk': `CANDLE#${symbol}#1m`,
+            ':start': periodStart,
+            ':end': periodStart + intervalSeconds - 1
+          }
+        }));
+        
+        dbCandles = (result.Items || []).map(item => ({
+          t: item.time || item.sk,
+          o: parseFloat(item.open || item.o),
+          h: parseFloat(item.high || item.h),
+          l: parseFloat(item.low || item.l),
+          c: parseFloat(item.close || item.c),
+          v: parseFloat(item.volume || item.v) || 0
+        }));
+        
+        if (dbCandles.length > 0) {
+          console.log(`[ACTIVE] Using ${dbCandles.length} 1m candles from DynamoDB for ${symbol}`);
+        }
+      } catch (dbErr) {
+        console.warn(`[ACTIVE] DynamoDB 1m query failed: ${dbErr.message}`);
+      }
+    }
+    
+    // 3. 현재 진행 중인 1분봉 조회 (Valkey)
     const activeOneMin = await valkey.hgetall(`candle:1m:${symbol}`);
     
-    // 병합
-    const allCandles = [...closedCandles];
+    // 4. 모든 소스 병합
+    const allCandles = [...valkeyClosedCandles, ...dbCandles];
+    
+    // 중복 제거 (같은 시간의 캔들은 Valkey 우선)
+    const candleMap = new Map();
+    for (const c of allCandles) {
+      if (!candleMap.has(c.t)) {
+        candleMap.set(c.t, c);
+      }
+    }
+    
+    // 현재 진행 중인 1분봉 추가
     if (activeOneMin && activeOneMin.t && parseInt(activeOneMin.t) >= periodStart) {
-      allCandles.push({
-        t: parseInt(activeOneMin.t),
+      const activeT = parseInt(activeOneMin.t);
+      candleMap.set(activeT, {
+        t: activeT,
         o: parseFloat(activeOneMin.o),
         h: parseFloat(activeOneMin.h),
         l: parseFloat(activeOneMin.l),
@@ -139,19 +183,21 @@ async function computeActiveCandle(symbol, intervalSeconds) {
       });
     }
     
-    if (allCandles.length === 0) return null;
+    const mergedCandles = Array.from(candleMap.values());
+    
+    if (mergedCandles.length === 0) return null;
     
     // 시간순 정렬
-    allCandles.sort((a, b) => a.t - b.t);
+    mergedCandles.sort((a, b) => a.t - b.t);
     
     // 집계
     return {
       time: periodStart,
-      open: allCandles[0].o,                          // 첫 캔들의 시가
-      high: Math.max(...allCandles.map(c => c.h)),    // 최고가
-      low: Math.min(...allCandles.map(c => c.l)),     // 최저가
-      close: allCandles[allCandles.length - 1].c,     // 마지막 캔들의 종가 (현재가!)
-      volume: allCandles.reduce((sum, c) => sum + (c.v || 0), 0)
+      open: mergedCandles[0].o,                          // 첫 캔들의 시가
+      high: Math.max(...mergedCandles.map(c => c.h)),    // 최고가
+      low: Math.min(...mergedCandles.map(c => c.l)),     // 최저가
+      close: mergedCandles[mergedCandles.length - 1].c,  // 마지막 캔들의 종가 (현재가!)
+      volume: mergedCandles.reduce((sum, c) => sum + (c.v || 0), 0)
     };
     
   } catch (error) {

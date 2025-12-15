@@ -50,6 +50,7 @@ let candleCache = {};   // symbol -> candleData
 // 상태 추적
 let prevSymbolCount = 0;
 let prevRealtimeCount = 0;
+let prevCandleData = {};  // symbol -> 이전 캔들 데이터 (봉마감 감지용)
 
 // === 유틸리티 ===
 async function sendToConnection(connectionId, data) {
@@ -100,13 +101,25 @@ async function fetchSymbolData(symbol) {
   return { depthJson, tickerJson, candle };
 }
 
-// === 봉 마감 체크 ===
-async function checkCandleClose(symbol) {
-  const closed = await valkey.lpop(`candle:closed:1m:${symbol}`);
-  if (closed) {
-    debug(`Candle closed: ${symbol}`);
-    return JSON.parse(closed);
+// === 봉 마감 감지 (t 값 변화로 감지, LPOP 사용 안 함) ===
+function detectCandleClose(symbol, currentCandle) {
+  if (!currentCandle || !currentCandle.t) return null;
+  
+  const prevCandle = prevCandleData[symbol];
+  
+  // 이전 캔들이 있고, t 값이 다르면 = 분이 바뀜 = 이전 봉 마감!
+  if (prevCandle && prevCandle.t && prevCandle.t !== currentCandle.t) {
+    debug(`Candle closed: ${symbol} t=${prevCandle.t} -> ${currentCandle.t}`);
+    const closedCandle = { ...prevCandle };  // 복사본 반환
+    prevCandleData[symbol] = { ...currentCandle };  // 현재 캔들 저장
+    return closedCandle;
   }
+  
+  // 이전 캔들 없으면 현재 캔들 저장
+  if (!prevCandle) {
+    prevCandleData[symbol] = { ...currentCandle };
+  }
+  
   return null;
 }
 
@@ -194,8 +207,8 @@ async function fastPollLoop() {
         // 데이터 조회 (캐시도 갱신)
         const { depthJson, tickerJson, candle } = await fetchSymbolData(symbol);
         
-        // 봉 마감 체크
-        const closedCandle = await checkCandleClose(symbol);
+        // 봉 마감 감지 (t 값 변화로 감지 - LPOP 없음)
+        const closedCandle = detectCandleClose(symbol, candle);
         
         // 로그인 사용자에게만 브로드캐스트
         await broadcastToSubscribers(symbol, allMain, subSubs, {

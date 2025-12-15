@@ -57,6 +57,28 @@ const TIMEFRAMES = [
   { interval: '1w', seconds: 604800 }
 ];
 
+// === 재시도 헬퍼 함수 (지수 백오프) ===
+const MAX_RETRIES = 3;
+const BASE_DELAY_MS = 1000;
+
+async function withRetry(operation, operationName, maxRetries = MAX_RETRIES) {
+  let lastError;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxRetries) {
+        const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1);  // 1s, 2s, 4s
+        console.warn(`[RETRY] ${operationName} failed (attempt ${attempt}/${maxRetries}), retrying in ${delay}ms: ${error.message}`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+  console.error(`[RETRY] ${operationName} failed after ${maxRetries} attempts: ${lastError.message}`);
+  throw lastError;
+}
+
 // === 캔들 완료 여부 확인 ===
 // EventBridge 10분 트리거 시점에 완전히 마감된 캔들만 저장
 function isCompletedCandle(candleStartTime, intervalSeconds) {
@@ -153,15 +175,18 @@ export const handler = async (event) => {
       const s3Key = `candles/timeframe=1m/symbol=${symbol}/year=${dateStr.slice(0,4)}/month=${dateStr.slice(4,6)}/day=${dateStr.slice(6,8)}/${hourStr}${minStr}.json`;
       debug(`[S3] ${symbol}: Saving to ${s3Key}`);
       try {
-        await s3.send(new PutObjectCommand({
-          Bucket: S3_BUCKET,
-          Key: s3Key,
-          Body: JSON.stringify({ symbol, candles: candleData }),
-          ContentType: 'application/json'
-        }));
+        await withRetry(
+          () => s3.send(new PutObjectCommand({
+            Bucket: S3_BUCKET,
+            Key: s3Key,
+            Body: JSON.stringify({ symbol, candles: candleData }),
+            ContentType: 'application/json'
+          })),
+          `S3 PUT ${s3Key}`
+        );
         debug(`[S3] ${symbol}: Save successful`);
       } catch (s3Err) {
-        console.error(`[S3] ${symbol}: Save failed - ${s3Err.message}`);
+        console.error(`[S3] ${symbol}: Save failed after retries - ${s3Err.message}`);
       }
       
       // DynamoDB 저장
@@ -169,25 +194,28 @@ export const handler = async (event) => {
       let dynamoSuccess = 0, dynamoFail = 0;
       for (const candle of candleData) {
         try {
-          await dynamodb.send(new PutCommand({
-            TableName: DYNAMODB_CANDLE_TABLE,
-            Item: {
-              pk: `CANDLE#${symbol}#1m`,
-              sk: parseInt(candle.t),
-              time: parseInt(candle.t),
-              open: parseFloat(candle.o),
-              high: parseFloat(candle.h),
-              low: parseFloat(candle.l),
-              close: parseFloat(candle.c),
-              volume: parseFloat(candle.v) || 0,
-              symbol,
-              interval: '1m'
-            }
-          }));
+          await withRetry(
+            () => dynamodb.send(new PutCommand({
+              TableName: DYNAMODB_CANDLE_TABLE,
+              Item: {
+                pk: `CANDLE#${symbol}#1m`,
+                sk: parseInt(candle.t),
+                time: parseInt(candle.t),
+                open: parseFloat(candle.o),
+                high: parseFloat(candle.h),
+                low: parseFloat(candle.l),
+                close: parseFloat(candle.c),
+                volume: parseFloat(candle.v) || 0,
+                symbol,
+                interval: '1m'
+              }
+            })),
+            `DynamoDB PUT ${symbol} 1m ${candle.t}`
+          );
           dynamoSuccess++;
         } catch (dbErr) {
           dynamoFail++;
-          console.warn(`[DYNAMO] ${symbol}: Put failed - ${dbErr.message}`);
+          console.warn(`[DYNAMO] ${symbol}: Put failed after retries - ${dbErr.message}`);
         }
       }
       debug(`[DYNAMO] ${symbol}: Completed - ${dynamoSuccess} success, ${dynamoFail} failed`);
@@ -213,25 +241,28 @@ export const handler = async (event) => {
         let tfSuccess = 0, tfFail = 0;
         for (const candle of completed) {
           try {
-            await dynamodb.send(new PutCommand({
-              TableName: DYNAMODB_CANDLE_TABLE,
-              Item: {
-                pk: `CANDLE#${symbol}#${tf.interval}`,
-                sk: candle.t,
-                time: candle.t,
-                open: candle.o,
-                high: candle.h,
-                low: candle.l,
-                close: candle.c,
-                volume: candle.v,
-                symbol,
-                interval: tf.interval
-              }
-            }));
+            await withRetry(
+              () => dynamodb.send(new PutCommand({
+                TableName: DYNAMODB_CANDLE_TABLE,
+                Item: {
+                  pk: `CANDLE#${symbol}#${tf.interval}`,
+                  sk: candle.t,
+                  time: candle.t,
+                  open: candle.o,
+                  high: candle.h,
+                  low: candle.l,
+                  close: candle.c,
+                  volume: candle.v,
+                  symbol,
+                  interval: tf.interval
+                }
+              })),
+              `DynamoDB PUT ${symbol} ${tf.interval} ${candle.t}`
+            );
             tfSuccess++;
           } catch (dbErr) {
             tfFail++;
-            debug(`[TF] ${symbol} ${tf.interval}: Put failed - ${dbErr.message}`);
+            debug(`[TF] ${symbol} ${tf.interval}: Put failed after retries - ${dbErr.message}`);
           }
         }
         

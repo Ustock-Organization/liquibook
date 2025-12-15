@@ -212,13 +212,33 @@ flowchart TD
 | 캔들 → 클라이언트 | Streamer (50ms/500ms) | 50~500ms |
 | 캔들 → 영구 저장 | Lambda (10분마다) | ~분 단위 |
 
-### 타임프레임별 전략
+### 타임프레임별 전략 (TradingView Lightweight Charts 준수)
 
-| 타임프레임 | 집계 위치 | 저장 |
-|------------|----------|------|
-| **1분** | Valkey (Lua Script) | Hot: Valkey, Cold: S3 |
-| 3분, 5분, 15분, 30분 | Streamer 롤업 | Valkey |
-| **1시간, 4시간, 1일** | Lambda 롤업 | DynamoDB + S3 |
+| 타임프레임 | 과거 데이터 | 실시간 업데이트 |
+|------------|------------|-----------------|
+| **1분** | DynamoDB `CANDLE#SYMBOL#1m` | WebSocket 1분봉 직접 표시 |
+| 3분, 5분, 15분, 30분 | DynamoDB 사전 집계 | 클라이언트에서 1분봉 → 집계 |
+| **1시간, 4시간, 1일** | DynamoDB 사전 집계 | 클라이언트에서 1분봉 → 집계 |
+
+### TradingView Lightweight Charts 데이터 처리
+
+```
+타임프레임 버튼 클릭 (예: 5분)
+        ↓
+Chart API 호출: /chart?symbol=TEST&interval=5m&limit=200
+        ↓
+candleSeries.setData(apiData)  ← 전체 데이터 교체 (권장)
+        ↓
+WebSocket 실시간: 1분봉 수신
+        ↓
+클라이언트에서 5분봉으로 집계
+        ↓
+candleSeries.update(aggregatedCandle)  ← 마지막 캔들만 업데이트 (권장)
+```
+
+**핵심 원칙**:
+- `setData()`: 타임프레임 전환 시 사용 (전체 데이터 교체)
+- `update()`: 실시간 업데이트 시 사용 (마지막 캔들만)
 
 ---
 
