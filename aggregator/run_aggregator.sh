@@ -64,11 +64,11 @@ else
 fi
 
 # ========================================
-# 경로 설정
+# 경로 설정 (스크립트 위치 기반으로 자동 설정)
 # ========================================
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$HOME/liquibook"
-AGGREGATOR_DIR="$REPO_ROOT/aggregator"
+AGGREGATOR_DIR="$SCRIPT_DIR"
+REPO_ROOT="$(dirname "$AGGREGATOR_DIR")"
 BUILD_DIR="$AGGREGATOR_DIR/build"
 
 # ========================================
