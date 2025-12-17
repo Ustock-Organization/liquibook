@@ -1057,57 +1057,40 @@
             }
         }
 
-        // 오더북 업데이트
+        // 오더북 업데이트 (최적화)
         function updateOrderbook(symbol, data) {
             orderbooks[symbol] = data;
-
-            // 활성 심볼이면 렌더링
-            if (symbol === activeOrderbookSymbol) {
-                renderOrderbook(symbol, data);
-            }
-        }
-
-        // 초기 placeholder 표시
-        function initOrderbookPlaceholder() {
-            const asksEl = document.getElementById('asksList');
-            const bidsEl = document.getElementById('bidsList');
-            const rows = [];
-            for (let i = 0; i < 10; i++) {
-                rows.push(`<div class="orderbook-row">
-                    <span class="price ask">-</span>
-                    <span class="qty">-</span>
-                    <span class="total">-</span>
-                </div>`);
-            }
-            asksEl.innerHTML = rows.join('');
-            bidsEl.innerHTML = rows.join('');
-            document.getElementById('currentPriceDisplay').textContent = '-';
-            document.getElementById('spreadDisplay').textContent = '-';
-        }
-
-        function renderOrderbook(symbol, data) {
-            const asksEl = document.getElementById('asksList');
-            const bidsEl = document.getElementById('bidsList');
-            const currentPriceEl = document.getElementById('currentPriceDisplay');
-            const spreadEl = document.getElementById('spreadDisplay');
             
-            // 컴팩트 포맷: [[price, qty], ...] 또는 레거시 [{price, quantity}, ...]
+            // 활성 심볼인 경우에만 UI 상태 업데이트
+            if (symbol === activeOrderbookSymbol) {
+                uiState.orderbook = data;
+                uiState.orderbookDirty = true;
+            }
+        }
+        
+        // 초기 placeholder (initDOMCache에서 처리하므로 비워둠)
+        function initOrderbookPlaceholder() {}
+
+        function renderOrderbookOptimized() {
+            const data = uiState.orderbook;
+            if(!data || !domCache.asks || domCache.asks.length === 0) return;
+            
+            // 데이터 처리
             const asksData = (data.asks || []).map(a => Array.isArray(a) ? {price: a[0], qty: a[1]} : {price: a.price, qty: a.quantity});
             const bidsData = (data.bids || []).map(b => Array.isArray(b) ? {price: b[0], qty: b[1]} : {price: b.price, qty: b.quantity});
             
-            // 모든 수량 수집하여 최소/최대 구하기
+            // Min/Max 계산
             const allQuantities = [...asksData.map(a => a.qty), ...bidsData.map(b => b.qty)].filter(q => q > 0);
             const minQty = allQuantities.length > 0 ? Math.min(...allQuantities) : 0;
             const maxQty = allQuantities.length > 0 ? Math.max(...allQuantities) : 1;
             const qtyRange = maxQty - minQty || 1;
             
-            // 상대적 바 너비 계산 함수 (0% ~ 100%)
             const getBarWidth = (qty) => {
                 if (!qty || qty <= 0) return 0;
                 return Math.min(100, Math.max(5, ((qty - minQty) / qtyRange) * 100));
             };
-            
-            // 현재가 및 스프레드 계산
+
+            // 1. 현재가/스프레드
             if (asksData.length > 0 && bidsData.length > 0) {
                 const bestAsk = asksData[0].price;
                 const bestBid = bidsData[0].price;
@@ -1115,58 +1098,57 @@
                 const spread = bestAsk - bestBid;
                 const spreadPct = ((spread / midPrice) * 100).toFixed(2);
                 
-                currentPriceEl.innerHTML = `<span style="color: var(--accent);">${symbol}</span> ${midPrice.toFixed(2)}`;
-                spreadEl.innerHTML = `${spread.toFixed(2)} (${spreadPct}%)`;
-            } else {
-                currentPriceEl.textContent = '-';
-                spreadEl.textContent = '-';
+                if(domCache.currentPrice) domCache.currentPrice.innerHTML = `<span style="color: var(--accent);">${activeOrderbookSymbol}</span> ${midPrice.toFixed(2)}`;
+                if(domCache.spread) domCache.spread.innerHTML = `${spread.toFixed(2)} (${spreadPct}%)`;
             }
 
-            // 매도호가 (낮은 가격이 아래, 높은 가격이 위 → 역순으로 표시)
-            const asksRows = [];
+            // 2. Asks 렌더링 (역순)
             const displayAsks = asksData.slice(0, 10).reverse();
-            for (const a of displayAsks) {
-                const barWidth = getBarWidth(a.qty);
-                const total = a.price * a.qty;
-                asksRows.push(`<div class="orderbook-row">
-                    <div class="bar ask" style="width: ${barWidth}%;"></div>
-                    <span class="price ask">${a.price.toFixed(2)}</span>
-                    <span class="qty">${a.qty}</span>
-                    <span class="total">${total.toLocaleString()}</span>
-                </div>`);
+            // 빈 슬롯 채우기 (아래에서부터 채워짐)
+            // displayAsks: [102, 101, 100] (0, 1, 2)
+            // 화면: 102(위) -> 100(아래)
+            // DOM은 위에서부터 0번 인덱스.
+            // 따라서 10개의 슬롯 중, 데이터가 3개면 위쪽 7개는 비우고 아래 3개를 채워야 함?
+            // 기존 로직: while (asksRows.length < 10) asksRows.unshift(empty);
+            // 즉, 위쪽이 비고 아래쪽이 데이터.
+            
+            const emptyCount = 10 - displayAsks.length;
+            
+            for(let i=0; i<10; i++) {
+                const row = domCache.asks[i];
+                if (i < emptyCount) {
+                    // 빈 행
+                    row.price.textContent = '-';
+                    row.qty.textContent = '-';
+                    row.total.textContent = '-';
+                    row.bar.style.width = '0%';
+                } else {
+                    // 데이터 행
+                    const d = displayAsks[i - emptyCount];
+                    row.price.textContent = d.price.toFixed(2);
+                    row.qty.textContent = d.qty;
+                    row.total.textContent = (d.price * d.qty).toLocaleString();
+                    row.bar.style.width = `${getBarWidth(d.qty)}%`;
+                }
             }
-            // 빈 행 채우기
-            while (asksRows.length < 10) {
-                asksRows.unshift(`<div class="orderbook-row">
-                    <span class="price ask" style="color: var(--text-muted);">-</span>
-                    <span class="qty" style="color: var(--text-muted);">-</span>
-                    <span class="total">-</span>
-                </div>`);
-            }
-            asksEl.innerHTML = asksRows.join('');
 
-            // 매수호가 (높은 가격이 위)
-            const bidsRows = [];
+            // 3. Bids 렌더링 (정순)
             const displayBids = bidsData.slice(0, 10);
-            for (const b of displayBids) {
-                const barWidth = getBarWidth(b.qty);
-                const total = b.price * b.qty;
-                bidsRows.push(`<div class="orderbook-row">
-                    <div class="bar bid" style="width: ${barWidth}%;"></div>
-                    <span class="price bid">${b.price.toFixed(2)}</span>
-                    <span class="qty">${b.qty}</span>
-                    <span class="total">${total.toLocaleString()}</span>
-                </div>`);
+            for(let i=0; i<10; i++) {
+                const row = domCache.bids[i];
+                if (i < displayBids.length) {
+                    const d = displayBids[i];
+                    row.price.textContent = d.price.toFixed(2);
+                    row.qty.textContent = d.qty;
+                    row.total.textContent = (d.price * d.qty).toLocaleString();
+                    row.bar.style.width = `${getBarWidth(d.qty)}%`;
+                } else {
+                    row.price.textContent = '-';
+                    row.qty.textContent = '-';
+                    row.total.textContent = '-';
+                    row.bar.style.width = '0%';
+                }
             }
-            // 빈 행 채우기
-            while (bidsRows.length < 10) {
-                bidsRows.push(`<div class="orderbook-row">
-                    <span class="price bid" style="color: var(--text-muted);">-</span>
-                    <span class="qty" style="color: var(--text-muted);">-</span>
-                    <span class="total">-</span>
-                </div>`);
-            }
-            bidsEl.innerHTML = bidsRows.join('');
         }
 
         function selectOrderbookSymbol(symbol) {
@@ -1703,26 +1685,37 @@
             }
         }
 
-        // ======== 실시간 캔들 디스플레이 ========
+        // ======== 실시간 캔들 디스플레이 (최적화) ========
         let candleIndicatorTimeout = null;
         
         function updateCandleLogTable(msg) {
+            // 상태만 업데이트하고 리턴 (UI 렌더링은 루프에서 처리)
+            uiState.candle = msg;
+            uiState.candleDirty = true;
+            
+            // 인디케이터 즉시 반응 (시각적 피드백은 중요하므로 유지하되 최적화)
+            if (domCache.candleIndicator) {
+                domCache.candleIndicator.style.background = '#3fb950';
+                clearTimeout(candleIndicatorTimeout);
+                candleIndicatorTimeout = setTimeout(() => { 
+                    if(domCache.candleIndicator) domCache.candleIndicator.style.background = '#333'; 
+                }, 200); // 200ms 깜빡임
+            }
+        }
+        
+        function renderCandleLogOptimized() {
+            const msg = uiState.candle;
+            if (!msg || !domCache.candleTime) return;
+            
             const isBullish = parseFloat(msg.c) >= parseFloat(msg.o);
             
-            // 인디케이터 업데이트 (데이터가 오는 동안 켜짐)
-            const indicator = document.getElementById('candleIndicator');
-            indicator.style.background = '#3fb950';
-            clearTimeout(candleIndicatorTimeout);
-            candleIndicatorTimeout = setTimeout(() => { indicator.style.background = '#333'; }, 1000);
-            
-            // 캔들 데이터 표시
-            document.getElementById('candleTime').textContent = new Date().toLocaleTimeString();
-            document.getElementById('candleO').textContent = msg.o;
-            document.getElementById('candleH').textContent = msg.h;
-            document.getElementById('candleL').textContent = msg.l;
-            document.getElementById('candleC').textContent = msg.c;
-            document.getElementById('candleC').style.color = isBullish ? 'var(--buy)' : 'var(--sell)';
-            document.getElementById('candleV').textContent = msg.v || '-';
+            domCache.candleTime.textContent = new Date().toLocaleTimeString();
+            domCache.candleO.textContent = msg.o;
+            domCache.candleH.textContent = msg.h;
+            domCache.candleL.textContent = msg.l;
+            domCache.candleC.textContent = msg.c;
+            domCache.candleC.style.color = isBullish ? 'var(--buy)' : 'var(--sell)';
+            domCache.candleV.textContent = msg.v || '-';
         }
 
         // ======== TradingView Lightweight Charts (타임프레임 지원) ========
@@ -1997,6 +1990,113 @@
             console.log('TradingView 차트 초기화 완료');
         }
         
+        // ======== UI 최적화 State & Cache ========
+        const uiState = {
+            orderbook: { asks: [], bids: [] },
+            orderbookDirty: false,
+            candle: null,
+            candleDirty: false,
+            ticker: new Map(),
+            tickerDirty: false,
+            // 최근 캔들 차트 데이터
+            lastChartCandle: null,
+            chartDirty: false
+        };
+
+        const domCache = {};
+        
+        function initDOMCache() {
+            // 호가창 요소 미리 생성
+            const asksEl = document.getElementById('asksList');
+            const bidsEl = document.getElementById('bidsList');
+            
+            // 미리 10개 행 생성 (REFLOW 최소화)
+            const createRows = () => {
+                let html = '';
+                for(let i=0; i<10; i++) {
+                    html += `<div class="orderbook-row" id="ask-row-${i}">
+                        <div class="bar ask" id="ask-bar-${i}"></div>
+                        <span class="price ask" id="ask-price-${i}">-</span>
+                        <span class="qty" id="ask-qty-${i}">-</span>
+                        <span class="total" id="ask-total-${i}">-</span>
+                    </div>`;
+                }
+                return html;
+            };
+            asksEl.innerHTML = createRows().replace(/ask/g, 'ask'); // Asks
+            bidsEl.innerHTML = createRows().replace(/ask/g, 'bid'); // Bids (ID 교체 필요)
+            // 위 replace는 정교하지 않으므로 다시 작성
+            
+            asksEl.innerHTML = ''; bidsEl.innerHTML = '';
+            for(let i=0; i<10; i++) {
+                asksEl.innerHTML += `<div class="orderbook-row"><div class="bar ask" id="ask-bar-${i}"></div><span class="price ask" id="ask-price-${i}">-</span><span class="qty" id="ask-qty-${i}">-</span><span class="total" id="ask-total-${i}">-</span></div>`;
+                bidsEl.innerHTML += `<div class="orderbook-row"><div class="bar bid" id="bid-bar-${i}"></div><span class="price bid" id="bid-price-${i}">-</span><span class="qty" id="bid-qty-${i}">-</span><span class="total" id="bid-total-${i}">-</span></div>`;
+            }
+
+            // 캐싱
+            domCache.asks = [];
+            domCache.bids = [];
+            for(let i=0; i<10; i++) {
+                domCache.asks.push({
+                    bar: document.getElementById(`ask-bar-${i}`),
+                    price: document.getElementById(`ask-price-${i}`),
+                    qty: document.getElementById(`ask-qty-${i}`),
+                    total: document.getElementById(`ask-total-${i}`)
+                });
+                domCache.bids.push({
+                    bar: document.getElementById(`bid-bar-${i}`),
+                    price: document.getElementById(`bid-price-${i}`),
+                    qty: document.getElementById(`bid-qty-${i}`),
+                    total: document.getElementById(`bid-total-${i}`)
+                });
+            }
+            
+            domCache.currentPrice = document.getElementById('currentPriceDisplay');
+            domCache.spread = document.getElementById('spreadDisplay');
+            
+            // 캔들 정보
+            domCache.candleTime = document.getElementById('candleTime');
+            domCache.candleO = document.getElementById('candleO');
+            domCache.candleH = document.getElementById('candleH');
+            domCache.candleL = document.getElementById('candleL');
+            domCache.candleC = document.getElementById('candleC');
+            domCache.candleV = document.getElementById('candleV');
+            domCache.candleIndicator = document.getElementById('candleIndicator');
+            
+            // 차트 정보
+            domCache.chartSymbol = document.getElementById('chartSymbolDisplay');
+            domCache.chartOpen = document.getElementById('chartOpen');
+            domCache.chartHigh = document.getElementById('chartHigh');
+            domCache.chartLow = document.getElementById('chartLow');
+            domCache.chartClose = document.getElementById('chartClose');
+            domCache.chartVolume = document.getElementById('chartVolume');
+            domCache.chartLastUpdate = document.getElementById('chartLastUpdate');
+        }
+
+        function startRenderLoop() {
+            function loop() {
+                if (uiState.orderbookDirty) {
+                    renderOrderbookOptimized();
+                    uiState.orderbookDirty = false;
+                }
+                if (uiState.candleDirty) {
+                    renderCandleLogOptimized();
+                    uiState.candleDirty = false;
+                }
+                if (uiState.chartDirty) {
+                    renderChartInfoOptimized();
+                    uiState.chartDirty = false;
+                }
+                requestAnimationFrame(loop);
+            }
+            requestAnimationFrame(loop);
+        }
+        
+        // ======== 차트 유틸리티 (TradingView) ========
+        // 색상 상수
+        const COLOR_BUY = 'rgba(63, 185, 80, 0.5)';
+        const COLOR_SELL = 'rgba(248, 81, 73, 0.5)';
+        
         function updateLiveCandleChart(msg) {
             // 차트 초기화 (처음 호출 시)
             if (!tvChart) initTradingViewChart();
@@ -2013,23 +2113,9 @@
                 chartSymbol = msg.s;
             }
             
-            // OHLCV 표시 업데이트 (1분봉 기준 - 실시간 정보)
-            document.getElementById('chartSymbolDisplay').textContent = `${msg.s} (${selectedTimeframe})`;
-            document.getElementById('chartOpen').textContent = o.toFixed(2);
-            document.getElementById('chartHigh').textContent = h.toFixed(2);
-            document.getElementById('chartLow').textContent = l.toFixed(2);
-            document.getElementById('chartClose').textContent = c.toFixed(2);
-            document.getElementById('chartVolume').textContent = v.toFixed(0);
-            document.getElementById('chartLastUpdate').textContent = new Date().toLocaleTimeString();
-            
-            // 종가 색상 (시가 대비)
-            const isBullish = c >= o;
-            document.getElementById('chartClose').style.color = isBullish ? 'var(--buy)' : 'var(--sell)';
-            
-            // === RAW JSON 표시 업데이트 ===
-            const candleTime = t ? new Date(t * 1000).toLocaleString() : '-';
-            document.getElementById('rawJsonTimestamp').textContent = `수신: ${new Date().toLocaleTimeString()} | 캔들 시작: ${candleTime}`;
-            document.getElementById('rawCandleJson').textContent = JSON.stringify(msg, null, 2);
+            // OHLCV 표시 업데이트 (UI State에 저장 -> 렌더링 루프에서 처리)
+            uiState.lastChartCandle = { s: msg.s, o, h, l, c, v };
+            uiState.chartDirty = true;
             
             // 1분봉 버퍼에 저장 (실시간 집계용)
             const oneMinCandle = { time: t, open: o, high: h, low: l, close: c, volume: v };
@@ -2066,13 +2152,36 @@
                     };
                     let aggregatedVolume = periodCandles.reduce((sum, c) => sum + (c.volume || 0), 0);
                     
-                    // API 활성 캔들과 병합 (같은 기간인 경우)
+                    // API 활성 캔들 또는 기존 차트 데이터와 병합
+                    // (버퍼에 없는 과거 1분봉 데이터가 차트에 이미 있을 수 있음)
+                    let baseCandle = null;
+                    
+                    // 1. API 활성 캔들 확인
                     if (apiActiveCandle && apiActiveCandle.time === alignedTime) {
-                        // API 시가 유지, 고/저가는 최대/최소로 병합
-                        aggregated.open = apiActiveCandle.open;
-                        aggregated.high = Math.max(apiActiveCandle.high, aggregated.high);
-                        aggregated.low = Math.min(apiActiveCandle.low, aggregated.low);
-                        aggregatedVolume = Math.max(apiActiveCandle.volume, aggregatedVolume);
+                        baseCandle = apiActiveCandle;
+                    }
+                    
+                    // 2. 기존 차트 데이터 확인 (API 데이터보다 우선하거나 보완)
+                    const existingIdx = candleData.findIndex(d => d.time === alignedTime);
+                    if (existingIdx >= 0) {
+                        const existing = candleData[existingIdx];
+                        // 기존 데이터가 있으면 그것을 base로 사용 (이미 완성된 앞부분일 수 있음)
+                        if (!baseCandle) baseCandle = { 
+                            open: existing.open, 
+                            high: existing.high, 
+                            low: existing.low, 
+                            close: existing.close, 
+                            volume: volumeData[existingIdx].value 
+                        };
+                    }
+
+                    if (baseCandle) {
+                        // 시가는 기존 데이터 유지 (중요: 버퍼에 앞부분이 없을 수 있음)
+                        aggregated.open = baseCandle.open; 
+                        aggregated.high = Math.max(baseCandle.high, aggregated.high);
+                        aggregated.low = Math.min(baseCandle.low, aggregated.low);
+                        // 거래량은 누적값으로 처리 (Max)
+                        aggregatedVolume = Math.max(baseCandle.volume || 0, aggregatedVolume);
                     }
                     
                     const candlePoint = aggregated;
@@ -2109,6 +2218,22 @@
             }
         }
         
+        function renderChartInfoOptimized() {
+            const data = uiState.lastChartCandle;
+            if (!data || !domCache.chartSymbol) return;
+            
+            domCache.chartSymbol.textContent = `${data.s} (${selectedTimeframe})`;
+            domCache.chartOpen.textContent = data.o.toFixed(2);
+            domCache.chartHigh.textContent = data.h.toFixed(2);
+            domCache.chartLow.textContent = data.l.toFixed(2);
+            domCache.chartClose.textContent = data.c.toFixed(2);
+            domCache.chartVolume.textContent = data.v.toFixed(0);
+            domCache.chartLastUpdate.textContent = new Date().toLocaleTimeString();
+            
+            const isBullish = data.c >= data.o;
+            domCache.chartClose.style.color = isBullish ? 'var(--buy)' : 'var(--sell)';
+        }
+
         function addClosedCandleToHistory(msg) {
             // candle_close 이벤트 시 - 마감된 1분봉
             // 1분봉 버퍼에서 제거하고 DynamoDB에 저장됨 (backup-handler에서 처리)
@@ -2117,7 +2242,11 @@
         }
 
         // 페이지 로드 시 차트 초기화
+        // 페이지 로드 시 차트 초기화 + UI 최적화 초기화
         window.addEventListener('load', () => {
+            initDOMCache();   // DOM 캐시 초기화
+            startRenderLoop(); // 렌더링 루프 시작
+            
             setTimeout(initTradingViewChart, 500);
         });
 

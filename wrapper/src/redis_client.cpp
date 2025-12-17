@@ -311,10 +311,11 @@ std::string RedisClient::eval(const std::string& script, int numKeys,
     return result;
 }
 
-// === Unix epoch → YYYYMMDDHHmm 형식 변환 (KST 기준) ===
+// === Unix epoch → YYYYMMDDHHmm 형식 변환 (KST 기준: UTC+9) ===
 std::string epochToYMDHM(int64_t epoch) {
-    time_t time = static_cast<time_t>(epoch);
-    struct tm* tm_info = localtime(&time);  // 로컬 시간대 (KST)
+    // KST = UTC + 9시간
+    time_t kst_time = static_cast<time_t>(epoch + (9 * 3600));
+    struct tm* tm_info = gmtime(&kst_time); // gmtime을 사용하여 UTC(여기서는 KST 시간값) 구조체 얻기
     
     char buffer[13];  // YYYYMMDDHHmm + null
     snprintf(buffer, sizeof(buffer), "%04d%02d%02d%02d%02d",
