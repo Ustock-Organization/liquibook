@@ -2143,45 +2143,43 @@
                 if (periodCandles.length > 0) {
                     // 집계
                     periodCandles.sort((a, b) => a.time - b.time);
-                    let aggregated = {
-                        time: alignedTime,
-                        open: periodCandles[0].open,
-                        high: Math.max(...periodCandles.map(c => c.high)),
-                        low: Math.min(...periodCandles.map(c => c.low)),
-                        close: periodCandles[periodCandles.length - 1].close
-                    };
-                    let aggregatedVolume = periodCandles.reduce((sum, c) => sum + (c.volume || 0), 0);
                     
-                    // API 활성 캔들 또는 기존 차트 데이터와 병합
-                    // (버퍼에 없는 과거 1분봉 데이터가 차트에 이미 있을 수 있음)
-                    let baseCandle = null;
-                    
-                    // 1. API 활성 캔들 확인
-                    if (apiActiveCandle && apiActiveCandle.time === alignedTime) {
-                        baseCandle = apiActiveCandle;
-                    }
-                    
-                    // 2. 기존 차트 데이터 확인 (API 데이터보다 우선하거나 보완)
-                    const existingIdx = candleData.findIndex(d => d.time === alignedTime);
-                    if (existingIdx >= 0) {
-                        const existing = candleData[existingIdx];
-                        // 기존 데이터가 있으면 그것을 base로 사용 (이미 완성된 앞부분일 수 있음)
-                        if (!baseCandle) baseCandle = { 
-                            open: existing.open, 
-                            high: existing.high, 
-                            low: existing.low, 
-                            close: existing.close, 
-                            volume: volumeData[existingIdx].value 
-                        };
-                    }
+                    let aggregated;
+                    let aggregatedVolume;
 
-                    if (baseCandle) {
-                        // 시가는 기존 데이터 유지 (중요: 버퍼에 앞부분이 없을 수 있음)
-                        aggregated.open = baseCandle.open; 
-                        aggregated.high = Math.max(baseCandle.high, aggregated.high);
-                        aggregated.low = Math.min(baseCandle.low, aggregated.low);
-                        // 거래량은 누적값으로 처리 (Max)
-                        aggregatedVolume = Math.max(baseCandle.volume || 0, aggregatedVolume);
+                    // 1분봉(1m)인 경우: 서버에서 이미 완벽한 집계 데이터를 보내주므로 그대로 사용
+                    if (selectedTimeframe === '1m') {
+                        const latest = periodCandles[periodCandles.length - 1]; // 가장 최신 데이터
+                        aggregated = {
+                            time: alignedTime,
+                            open: latest.open,
+                            high: latest.high,
+                            low: latest.low,
+                            close: latest.close
+                        };
+                        aggregatedVolume = latest.volume;
+                    } else {
+                        // 타임프레임이 1분보다 큰 경우 (3m, 5m 등): 여러 1분봉을 합쳐야 함
+                        aggregated = {
+                            time: alignedTime,
+                            open: periodCandles[0].open,
+                            high: Math.max(...periodCandles.map(c => c.high)),
+                            low: Math.min(...periodCandles.map(c => c.low)),
+                            close: periodCandles[periodCandles.length - 1].close
+                        };
+                        // 상위 타임프레임 거래량은 합산
+                        aggregatedVolume = periodCandles.reduce((sum, c) => sum + (c.volume || 0), 0);
+                        
+                        // 기존 차트 데이터와 병합 (필요한 경우)
+                        const existingIdx = candleData.findIndex(d => d.time === alignedTime);
+                        if (existingIdx >= 0) {
+                            const existing = candleData[existingIdx];
+                            aggregated.open = existing.open; // 시가 유지
+                            aggregated.high = Math.max(existing.high, aggregated.high);
+                            aggregated.low = Math.min(existing.low, aggregated.low);
+                            // 거래량은 누적 방식에 따라 다름 (단순 합산의 경우 기존값보다 크면 사용)
+                            if (aggregatedVolume < existing.value) aggregatedVolume = existing.value;
+                        }
                     }
                     
                     const candlePoint = aggregated;
