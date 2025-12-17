@@ -29,20 +29,29 @@ const INTERVAL_SECONDS = {
   '1d': 86400, '1w': 604800
 };
 
-// === YYYYMMDDHHmm ↔ epoch 변환 헬퍼 ===
+// === YYYYMMDDHHmm ↔ epoch 변환 헬퍼 (KST 기준) ===
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;  // 9시간 (밀리초)
+
 function ymdhmToEpoch(ymdhm) {
+  // ymdhm은 KST 시간 문자열: "202512171230" = 2025-12-17 12:30 KST
   const y = parseInt(ymdhm.slice(0, 4));
   const m = parseInt(ymdhm.slice(4, 6)) - 1;
   const d = parseInt(ymdhm.slice(6, 8));
   const h = parseInt(ymdhm.slice(8, 10));
   const min = parseInt(ymdhm.slice(10, 12));
-  return Math.floor(new Date(y, m, d, h, min).getTime() / 1000);
+  
+  // Date.UTC로 UTC 시간 생성 후 KST 오프셋 적용
+  // KST 12:30 = UTC 03:30 → UTC 밀리초에서 9시간 빼기
+  const utcMs = Date.UTC(y, m, d, h, min, 0, 0) - KST_OFFSET_MS;
+  return Math.floor(utcMs / 1000);
 }
 
 function epochToYMDHM(epoch) {
-  const d = new Date(epoch * 1000);
+  // epoch (UTC) → KST 시간 문자열
+  const kstMs = epoch * 1000 + KST_OFFSET_MS;
+  const d = new Date(kstMs);
   const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}`;
+  return `${d.getUTCFullYear()}${pad(d.getUTCMonth()+1)}${pad(d.getUTCDate())}${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}`;
 }
 
 const headers = {

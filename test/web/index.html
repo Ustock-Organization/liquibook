@@ -1745,9 +1745,12 @@
             '30m': 1800, '1h': 3600, '4h': 14400, '1d': 86400
         };
         
-        // === YYYYMMDDHHmm → epoch 변환 (TradingView용) ===
+        // === YYYYMMDDHHmm → epoch 변환 (KST 시간 문자열 → UTC epoch) ===
+        const KST_OFFSET_SEC = 9 * 60 * 60;  // 9시간 (초)
+        
         function ymdhmToEpoch(ymdhm) {
             // "202512161404" → Unix epoch seconds
+            // ymdhm은 KST 시간이므로 UTC로 변환 필요
             if (typeof ymdhm === 'number') return ymdhm;  // 이미 epoch인 경우
             if (!ymdhm || ymdhm.length < 12) return 0;
             const y = parseInt(ymdhm.slice(0, 4));
@@ -1755,7 +1758,9 @@
             const d = parseInt(ymdhm.slice(6, 8));
             const h = parseInt(ymdhm.slice(8, 10));
             const min = parseInt(ymdhm.slice(10, 12));
-            return Math.floor(new Date(y, m, d, h, min).getTime() / 1000);
+            // Date.UTC로 UTC 시간 생성 후 KST 오프셋 빼기
+            const utcMs = Date.UTC(y, m, d, h, min, 0, 0) - (KST_OFFSET_SEC * 1000);
+            return Math.floor(utcMs / 1000);
         }
         
         // 타임프레임 선택 함수 (버튼 클릭 시)
