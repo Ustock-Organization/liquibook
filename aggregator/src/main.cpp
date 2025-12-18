@@ -96,23 +96,39 @@ int main(int argc, char* argv[]) {
             // 1. closed 캔들이 있는 심볼 목록 조회
             auto symbols = valkey.get_closed_symbols();
             
+            if (!symbols.empty()) {
+                Logger::info("Found", symbols.size(), "symbols with closed candles");
+            }
+
             for (const auto& symbol : symbols) {
                 // 2. 마감된 1분봉 가져오기
                 auto closed_candles = valkey.get_closed_candles(symbol);
                 
                 if (closed_candles.empty()) continue;
                 
-                Logger::debug("Processing", symbol, "-", closed_candles.size(), "closed candles");
+                Logger::info("Processing", symbol, "-", closed_candles.size(), "1m closed candles from Valkey");
                 
+                // 디버깅: 가져온 캔들 정보 일부 출력
+                if (!closed_candles.empty()) {
+                     const auto& first = closed_candles.front();
+                     Logger::debug("  First candle:", first.time, "O:", first.open, "C:", first.close);
+                }
+
                 // 3. 타임프레임별 집계
                 auto aggregated = aggregator.aggregate(closed_candles);
+                Logger::info("  Aggregated into", aggregated.size(), "timeframes");
                 
                 // 4. DynamoDB 저장 (모든 캔들 즉시 저장)
                 for (const auto& [interval, candles] : aggregated) {
                     if (candles.empty()) continue;
                     
+                    Logger::info("  Saving", candles.size(), "candles for interval", interval, "to DynamoDB...");
                     int saved = dynamodb.batch_put_candles(symbol, interval, candles);
-                    Logger::info("[DDB]", symbol, interval, ":", saved, "candles saved");
+                    if (saved > 0) {
+                        Logger::info("  [SUCCESS] DynamoDB:", symbol, interval, "-", saved, "candles saved");
+                    } else {
+                        Logger::error("  [FAILURE] DynamoDB save failed for", symbol, interval);
+                    }
                 }
                 
                 // 5. S3 백업 (60개 이상일 때만 - 1시간치)

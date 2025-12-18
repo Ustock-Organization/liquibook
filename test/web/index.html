@@ -479,7 +479,8 @@
                         </div>
                     </div>
                     <input type="hidden" id="orderUserId" value="test-user-1">
-                    <input type="hidden" id="orderEndpoint" value="https://4xs6g4w8l6.execute-api.ap-northeast-2.amazonaws.com/restV2/orders">
+                    <input type="hidden" id="orderUserId" value="test-user-1">
+                    <!-- OrderEndpoint moved to Candle Test card -->
                     <input type="hidden" id="apiKey" value="S0cLXAGtuza6T3GbYZ8TBbERqfdi5Xo1ilA914gf">
                     <button class="btn btn-primary" style="width: 100%; padding: 8px;" onclick="submitOrder()">주문 제출</button>
                     <div id="orderResponse" class="response-box" style="display: none; margin-top: 8px; font-size: 0.75rem;"></div>
@@ -531,20 +532,6 @@
                         <div class="form-group" style="flex: 2; margin-bottom: 0;">
                             <label style="font-size: 0.75rem;">심볼 (호가창 + 차트)</label>
                             <input type="text" id="mainSymbol" placeholder="TEST">
-                        </div>
-                        <div class="form-group" style="flex: 1; margin-bottom: 0;">
-                            <label style="font-size: 0.75rem;">타임프레임</label>
-                            <select id="chartTimeframe" style="padding: 8px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 6px; color: var(--text);">
-                                <option value="1m">1분</option>
-                                <option value="3m">3분</option>
-                                <option value="5m">5분</option>
-                                <option value="15m">15분</option>
-                                <option value="30m">30분</option>
-                                <option value="1h">1시간</option>
-                                <option value="4h">4시간</option>
-                                <option value="1d">1일</option>
-                                <option value="1w">1주</option>
-                            </select>
                         </div>
                     </div>
                     <button class="btn btn-primary" style="width: 100%;" onclick="subscribeMain()">구독</button>
@@ -639,6 +626,15 @@
                 <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">
                     가격 파동을 생성하여 1분/3분/5분 캔들 형성 테스트
                 </p>
+                
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label style="font-size: 0.75rem;">Chart API URL</label>
+                        <input type="text" id="chartEndpoint" value="https://supernoba-chart-api.lambda-url.ap-northeast-2.on.aws/" style="padding: 6px 8px;">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label style="font-size: 0.75rem;">Order API URL</label>
+                        <input type="text" id="orderEndpoint" value="https://4xs6g4w8l6.execute-api.ap-northeast-2.amazonaws.com/restV2/orders" style="padding: 6px 8px;">
+                    </div>
                 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px;">
                     <div class="form-group" style="margin: 0;">
@@ -1039,13 +1035,13 @@
                 // 실시간 캔들 업데이트 - 캔들 차트에만 표시 (Main 구독 테이블에서 제외)
                 candleEventCount++;
                 lastCandleData = msg;
-                updateLiveCandleChart(msg);
+                ingestCandleMessage(msg);
                 updateCandleLogTable(msg);
                 // updateRealtimeDisplay 호출 제거 - 캔들은 Main 구독 표시에서 제외
                 
             } else if (msg.e === 'candle_close') {
                 // 캔들 마감 알림
-                updateLiveCandleChart(msg);
+                ingestCandleMessage(msg);
                 addClosedCandleToHistory(msg);
                 
             } else if (msg.e === 't') {
@@ -1256,8 +1252,12 @@
             // ✅ 차트 히스토리 로드 (Chart API에서 과거 데이터 가져오기)
             // 전역 심볼 업데이트 및 타임프레임 로드 함수 사용 (일관성 유지)
             chartSymbol = symbol;
-            const currentTf = document.getElementById('chartTimeframe').value || '1m';
-            selectTimeframe(currentTf);
+            
+            // 차트 초기화 보장 (필수)
+            initTradingViewChart();
+
+            // 타임프레임은 전역 변수나 기본값 사용 (UI 선택 제거됨)
+            selectTimeframe(selectedTimeframe || '1m');
         }
         
 
@@ -1597,13 +1597,17 @@
             const symbol = document.getElementById('orderSymbol').value || 'TEST';
             
             try {
+                // 현실적인 거래량 시뮬레이션: 주문 수량 랜덤화 (1 ~ 50주)
+                // 실제 주식 시장: 거래량(Volume) = 체결된 주식 수(Quantity)의 합
+                const randomQty = Math.floor(Math.random() * 50) + 1;
+
                 // 체결용 매수+매도만 제출 (호가창은 이미 있다고 가정)
                 const buyOrder = {
                     user_id: 'candle-test-buyer',
                     symbol: symbol,
                     side: 'BUY',
                     price: candleCurrentPrice,
-                    quantity: 10,
+                    quantity: randomQty,
                     order_type: 'LIMIT'
                 };
                 const sellOrder = {
@@ -1611,12 +1615,12 @@
                     symbol: symbol,
                     side: 'SELL',
                     price: candleCurrentPrice,
-                    quantity: 10,
+                    quantity: randomQty,
                     order_type: 'LIMIT'
                 };
                 
                 // 병렬로 2개 주문 제출 (순차가 아닌 동시 처리)
-                await Promise.all([
+                const responses = await Promise.all([
                     fetch(endpoint, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
@@ -1628,6 +1632,19 @@
                         body: JSON.stringify(sellOrder)
                     })
                 ]);
+                
+                // 응답 상태 확인
+                const errors = [];
+                for (const res of responses) {
+                    if (!res.ok) {
+                        const text = await res.text();
+                        errors.push(`${res.status} ${res.statusText}: ${text}`);
+                    }
+                }
+                
+                if (errors.length > 0) {
+                    addLog('ERROR', `주문 실패: ${errors.join(', ')}`);
+                }
                 
                 candleOrderCount += 2;
                 document.getElementById('candleOrderCount').textContent = candleOrderCount;
@@ -1657,7 +1674,8 @@
             uiState.candle = msg;
             uiState.candleDirty = true;
             
-            // 인디케이터 즉시 반응 (시각적 피드백은 중요하므로 유지하되 최적화)
+            // 인디케이터 즉시 반응 제거 (성능 부하 원인)
+            /*
             if (domCache.candleIndicator) {
                 domCache.candleIndicator.style.background = '#3fb950';
                 clearTimeout(candleIndicatorTimeout);
@@ -1665,6 +1683,7 @@
                     if(domCache.candleIndicator) domCache.candleIndicator.style.background = '#333'; 
                 }, 200); // 200ms 깜빡임
             }
+            */
         }
         
         function renderCandleLogOptimized() {
@@ -1730,7 +1749,12 @@
         function extractTimestamp(msg) {
             // 우선순위: t_epoch > time > t (ymdhm 변환)
             if (msg.t_epoch !== undefined && msg.t_epoch !== null) {
-                return parseInt(msg.t_epoch);
+                const epoch = parseInt(msg.t_epoch);
+                // 13자리면 밀리초로 간주하고 초 단위로 변환
+                if (epoch > 9999999999) {
+                    return Math.floor(epoch / 1000);
+                }
+                return epoch;
             }
             if (msg.time !== undefined && msg.time !== null) {
                 // time이 이미 epoch인지 확인
@@ -1738,6 +1762,10 @@
                 // 10자리 이하면 epoch으로 간주
                 if (time.toString().length <= 10) {
                     return time;
+                }
+                // 13자리면 밀리초 -> 초
+                if (time.toString().length === 13) {
+                    return Math.floor(time / 1000);
                 }
                 // 12자리면 ymdhm으로 간주하고 변환
                 return ymdhmToEpoch(time);
@@ -1801,7 +1829,7 @@
             
             // 2. API 호출 시도
             const chartEndpoint = document.getElementById('chartEndpoint')?.value || 
-                'https://4xs6g4w8l6.execute-api.ap-northeast-2.amazonaws.com/restV2/chart';
+                'https://supernoba-chart-api.lambda-url.ap-northeast-2.on.aws/';
             const url = `${chartEndpoint}?symbol=${symbol}&interval=${interval}&limit=200`;
             
             let apiCandles = [];
@@ -1913,7 +1941,7 @@
         
         // 1분봉을 선택된 타임프레임으로 집계
         function aggregateToTimeframe(oneMinCandles, intervalSeconds) {
-            if (intervalSeconds === 60) return oneMinCandles;  // 1분봉은 그대로
+            if (intervalSeconds === 60) return oneMinCandles;  // 1분봉은 그대로 (서버 데이터 신뢰)
             
             const grouped = new Map();
             
@@ -2095,25 +2123,26 @@
 
         function startRenderLoop() {
             function loop() {
-                if (uiState.orderbookDirty) {
-                    renderOrderbookOptimized();
-                    uiState.orderbookDirty = false;
-                }
-                if (uiState.candleDirty) {
-                    renderCandleLogOptimized();
-                    uiState.candleDirty = false;
-                }
-                if (uiState.chartDirty) {
-                    renderChartInfoOptimized();
-                    uiState.chartDirty = false;
-                }
-                // 실시간 차트 그리기 (스로틀링 적용)
-                if (uiState.chartUpdatePending && candleSeries && uiState.pendingChartData) {
-                    candleSeries.update(uiState.pendingChartData);
-                    if (volumeSeries && uiState.pendingVolumeData) {
-                        volumeSeries.update(uiState.pendingVolumeData);
+                try {
+                    if (uiState.orderbookDirty) {
+                        renderOrderbookOptimized();
+                        uiState.orderbookDirty = false;
                     }
-                    uiState.chartUpdatePending = false;
+                    if (uiState.candleDirty) {
+                        renderCandleLogOptimized();
+                        uiState.candleDirty = false;
+                    }
+                    if (uiState.chartDirty) {
+                        renderChartInfoOptimized();
+                        uiState.chartDirty = false;
+                    }
+                    // 실시간 차트 그리기 (스로틀링 적용)
+                    if (uiState.chartUpdatePending) {
+                        updateTVChartFromBuffer();
+                        uiState.chartUpdatePending = false;
+                    }
+                } catch (e) {
+                    console.error("Render Loop Error:", e);
                 }
                 requestAnimationFrame(loop);
             }
@@ -2125,160 +2154,153 @@
         const COLOR_BUY = 'rgba(63, 185, 80, 0.5)';
         const COLOR_SELL = 'rgba(248, 81, 73, 0.5)';
         
-        function updateLiveCandleChart(msg) {
-            // 차트 초기화 (처음 호출 시)
+        // 1. WebSocket 메시지 수신부 (최대한 가볍게)
+        function ingestCandleMessage(msg) {
+            // 차트 초기화 체크
             if (!tvChart) initTradingViewChart();
-            
+
+            // 데이터 파싱
             const o = parseFloat(msg.o);
             const h = parseFloat(msg.h);
             const l = parseFloat(msg.l);
             const c = parseFloat(msg.c);
             const v = parseFloat(msg.v) || 0;
             
-            // epoch 우선 사용 (백엔드에서 제공)
-            // t_epoch가 있으면 사용, 없으면 time 또는 t에서 추출
+            // 타임스탬프 추출
             let t = extractTimestamp(msg);
             
-            // 타임스탬프 검증: 현재 시간보다 너무 미래면 오류로 간주
+            // NaN 체크 및 유효성 검사
+            if (!t || isNaN(t)) {
+                console.warn('[CHART] Invalid timestamp (NaN):', msg);
+                return;
+            }
+
+            // 미래 시간 방어 로직
             const nowSec = Math.floor(Date.now() / 1000);
-            if (t > nowSec + 3600) { // 1시간 이상 미래면 오류
-                console.warn('[CHART] Invalid timestamp:', t, 'current:', nowSec, 'msg:', msg);
-                // 최대 1시간 미래로 제한
-                t = nowSec + 3600;
-            }
+            if (t > nowSec + 3600) t = nowSec + 3600;
             
-            // 심볼 저장 (타임프레임 전환에 사용)
+            // 심볼 변경 체크 (첫 메시지거나 변경 시)
             if (msg.s && msg.s !== chartSymbol) {
-                chartSymbol = msg.s;
+                if (!chartSymbol) {
+                    chartSymbol = msg.s; // 처음이면 설정
+                } else {
+                    chartSymbol = msg.s;
+                }
             }
-            
-            // OHLCV 표시 업데이트 (UI State에 저장 -> 렌더링 루프에서 처리)
+            // 현재 차트 심볼과 다른 데이터는 무시 (혼선 방지)
+            if (chartSymbol && msg.s !== chartSymbol) return;
+
+            // UI 상태 업데이트
             uiState.lastChartCandle = { s: msg.s, o, h, l, c, v };
             uiState.chartDirty = true;
             
-            // 1분봉 버퍼에 저장 (실시간 집계용)
-            // Server sends exact trade time in t_epoch, so we MUST align to minute boundary
+            // ----------------------------------------------------
+            // 버퍼 업데이트
+            // ----------------------------------------------------
             const oneMinAlignedTime = Math.floor(t / 60) * 60;
-            const oneMinCandle = { time: oneMinAlignedTime, open: o, high: h, low: l, close: c, volume: v };
-            
-            // 같은 분 경계의 캔들 찾기
             const existingIdx = oneMinCandleBuffer.findIndex(d => d.time === oneMinAlignedTime);
+            
             if (existingIdx >= 0) {
-                // 기존 캔들 업데이트: OHLC 집계
                 const existing = oneMinCandleBuffer[existingIdx];
                 existing.high = Math.max(existing.high, h);
                 existing.low = Math.min(existing.low, l);
-                existing.close = c;  // 최신 종가
-                existing.volume = Math.max(existing.volume, v);  // 거래량은 누적값 (Engine에서 누적해서 보냄)
-                // 시가는 유지 (msg.o는 Engine이 관리하므로 항상 해당 분의 시가임)
+                existing.close = c;
+                // 기존 로직: Math.max 사용
+                existing.volume = Math.max(existing.volume, v); 
             } else {
-                oneMinCandleBuffer.push(oneMinCandle);
-                // 최대 120개 유지 (2시간치 1분봉)
+                // 새 1분봉 추가
+                oneMinCandleBuffer.push({ 
+                    time: oneMinAlignedTime, 
+                    open: o, high: h, low: l, close: c, volume: v 
+                });
+                
+                // 버퍼 크기 제한 (2시간)
                 if (oneMinCandleBuffer.length > 120) {
                     oneMinCandleBuffer.shift();
                 }
             }
             
-            // TradingView 차트 업데이트 (선택된 타임프레임으로 집계)
-            if (candleSeries) {
-                const intervalSeconds = TIMEFRAME_SECONDS[selectedTimeframe] || 60;
-                const alignedTime = Math.floor(t / intervalSeconds) * intervalSeconds;
-                
-                // 현재 기간에 해당하는 1분봉들 필터링
-                const periodCandles = oneMinCandleBuffer.filter(c => 
-                    Math.floor(c.time / intervalSeconds) * intervalSeconds === alignedTime
-                );
-                
-                if (periodCandles.length > 0) {
-                    // 집계
-                    periodCandles.sort((a, b) => a.time - b.time);
-                    
-                    let aggregated;
-                    let aggregatedVolume;
+            // 차트 갱신이 필요함을 마킹 (실제 계산은 Loop에서 함)
+            uiState.chartUpdatePending = true;
+        }
 
-                    // 1분봉(1m)인 경우: 서버에서 이미 완벽한 집계 데이터를 보내주지만,
-                    // 클라이언트에서도 같은 분 내 여러 업데이트를 집계해야 함
-                    if (selectedTimeframe === '1m') {
-                        // 같은 분 내 여러 캔들이 있을 수 있으므로 집계 필요 (안정성 강화)
-                        if (periodCandles.length === 1) {
-                            // 하나만 있으면 그대로 사용
-                            aggregated = {
-                                time: alignedTime,
-                                open: periodCandles[0].open,
-                                high: periodCandles[0].high,
-                                low: periodCandles[0].low,
-                                close: periodCandles[0].close
-                            };
-                            aggregatedVolume = periodCandles[0].volume;
-                        } else {
-                            // 여러 개면 집계 (만약의 경우 대비)
-                            aggregated = {
-                                time: alignedTime,
-                                open: periodCandles[0].open,  // 첫 캔들의 시가
-                                high: Math.max(...periodCandles.map(c => c.high)),
-                                low: Math.min(...periodCandles.map(c => c.low)),
-                                close: periodCandles[periodCandles.length - 1].close  // 마지막 캔들의 종가
-                            };
-                            aggregatedVolume = periodCandles.reduce((sum, c) => sum + (c.volume || 0), 0);
-                        }
-                    } else {
-                        // 타임프레임이 1분보다 큰 경우 (3m, 5m 등): 여러 1분봉을 합쳐야 함
-                        aggregated = {
-                            time: alignedTime,
-                            open: periodCandles[0].open,
-                            high: Math.max(...periodCandles.map(c => c.high)),
-                            low: Math.min(...periodCandles.map(c => c.low)),
-                            close: periodCandles[periodCandles.length - 1].close
-                        };
-                        // 상위 타임프레임 거래량은 합산
-                        aggregatedVolume = periodCandles.reduce((sum, c) => sum + (c.volume || 0), 0);
-                        
-                        // 기존 차트 데이터와 병합 (필요한 경우)
-                        const existingIdx = candleData.findIndex(d => d.time === alignedTime);
-                        if (existingIdx >= 0) {
-                            const existing = candleData[existingIdx];
-                            aggregated.open = existing.open; // 시가 유지
-                            aggregated.high = Math.max(existing.high, aggregated.high);
-                            aggregated.low = Math.min(existing.low, aggregated.low);
-                            // 거래량은 누적 방식에 따라 다름 (단순 합산의 경우 기존값보다 크면 사용)
-                            if (aggregatedVolume < existing.value) aggregatedVolume = existing.value;
-                        }
-                    }
-                    
-                    const candlePoint = aggregated;
-                    const volumePoint = { 
-                        time: alignedTime, 
-                        value: aggregatedVolume, 
-                        color: aggregated.close >= aggregated.open 
-                            ? 'rgba(63, 185, 80, 0.5)' 
-                            : 'rgba(248, 81, 73, 0.5)' 
-                    };
-                    
-                    // candleData 배열에서 같은 시간 찾기
-                    const dataIdx = candleData.findIndex(d => d.time === alignedTime);
-                    if (dataIdx >= 0) {
-                        candleData[dataIdx] = candlePoint;
-                        volumeData[dataIdx] = volumePoint;
-                    } else {
-                        candleData.push(candlePoint);
-                        volumeData.push(volumePoint);
-                        
-                        // 최대 개수 유지
-                        if (candleData.length > MAX_CANDLES) {
-                            candleData.shift();
-                            volumeData.shift();
-                        }
-                    }
-                    
-                    // TradingView 권장: update()로 마지막 캔들만 업데이트 (스로틀링 적용)
-                    // UI 루프에서 처리하도록 상태 저장
-                    uiState.pendingChartData = candlePoint;
-                    uiState.pendingVolumeData = volumePoint;
-                    uiState.chartUpdatePending = true;
-                    
-                    document.getElementById('chartCandleTotal').textContent = `${candleData.length} (${selectedTimeframe})`;
+        // 2. 루프에서 호출될 차트 계산 및 업데이트 함수
+        function updateTVChartFromBuffer() {
+            if (!candleSeries || oneMinCandleBuffer.length === 0) return;
+            
+            const intervalSeconds = TIMEFRAME_SECONDS[selectedTimeframe] || 60;
+            
+            // 버퍼의 마지막 데이터(가장 최신)를 현재 타임프레임으로 집계
+            const lastBuffer = oneMinCandleBuffer[oneMinCandleBuffer.length - 1];
+            const alignedTime = Math.floor(lastBuffer.time / intervalSeconds) * intervalSeconds;
+            
+            // 집계 대상 필터링
+            // 성능 최적화: 전체 필터링 대신 뒤에서부터 관련 데이터만 탐색
+            const periodCandles = [];
+            for (let i = oneMinCandleBuffer.length - 1; i >= 0; i--) {
+                const c = oneMinCandleBuffer[i];
+                const cAligned = Math.floor(c.time / intervalSeconds) * intervalSeconds;
+                if (cAligned === alignedTime) {
+                    periodCandles.push(c);
+                } else if (cAligned < alignedTime) {
+                    break; // 시간순 정렬되어 있다고 가정
                 }
             }
+            // 역순으로 넣었으니 다시 정렬
+            periodCandles.sort((a, b) => a.time - b.time);
+            
+            if (periodCandles.length === 0) return;
+            
+            // 집계 로직
+            let aggregated;
+            let aggregatedVolume;
+            
+            if (selectedTimeframe === '1m') {
+                const latest = periodCandles[periodCandles.length - 1]; // 1분봉은 그냥 최신꺼
+                aggregated = {
+                    time: alignedTime,
+                    open: latest.open, high: latest.high, low: latest.low, close: latest.close
+                };
+                aggregatedVolume = latest.volume;
+            } else {
+                // 상위 타임프레임: OHLC 병합
+                aggregated = {
+                    time: alignedTime,
+                    open: periodCandles[0].open,
+                    high: Math.max(...periodCandles.map(c => c.high)),
+                    low: Math.min(...periodCandles.map(c => c.low)),
+                    close: periodCandles[periodCandles.length - 1].close
+                };
+                // 거래량 합산
+                aggregatedVolume = periodCandles.reduce((sum, c) => sum + (c.volume || 0), 0);
+                
+                // 기존 데이터와 병합 (일봉/4시간봉 등 끊김 방지)
+                // (candleData 배열은 차트에 그려진 데이터 히스토리)
+                const existingChartData = candleData.find(d => d.time === alignedTime);
+                if (existingChartData) {
+                    aggregated.open = existingChartData.open; // 시가 불변
+                    aggregated.high = Math.max(existingChartData.high, aggregated.high);
+                    aggregated.low = Math.min(existingChartData.low, aggregated.low);
+                    if (aggregatedVolume < existingChartData.value) {
+                         // 기존보다 작으면 무시 (누적이니까)
+                         // 단, 상위 타임프레임의 경우 1분봉 합산이므로 단순 비교는 어려울 수 있으나
+                         // 일단 계산된 합산이 더 정확하다고 가정.
+                    }
+                }
+            }
+            
+            // 시리즈 업데이트
+            const candlePoint = aggregated;
+            const volumePoint = { 
+                time: alignedTime, 
+                value: aggregatedVolume, 
+                color: aggregated.close >= aggregated.open ? COLOR_BUY : COLOR_SELL
+            };
+            
+            candleSeries.update(candlePoint);
+            if (volumeSeries) volumeSeries.update(volumePoint);
+            
+            document.getElementById('chartCandleTotal').textContent = `${candleData.length} (${selectedTimeframe})`;
         }
         
         function renderChartInfoOptimized() {
