@@ -45,6 +45,15 @@ int main(int argc, char* argv[]) {
     // 설정 로드
     Config cfg = Config::from_env();
     Logger::set_level(cfg.log_level);
+
+    // 커맨드라인 인자 파싱 (--debug)
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--debug") {
+            Logger::set_level("DEBUG");
+            Logger::info("Debug mode enabled via command line flag");
+        }
+    }
     
     Logger::info("=== Configuration ===");
     Logger::info("Valkey Host:", cfg.valkey_host);
@@ -88,23 +97,38 @@ int main(int argc, char* argv[]) {
     Logger::info("=== Aggregator Running ===");
     Logger::info("Polling for closed candles every", cfg.poll_interval_ms, "ms");
     
-    // 마지막으로 처리한 시간 (중복 방지)
-    std::string last_processed_minute;
+    // 마지막으로 처리한 캔들 개수 (중복 로그/처리 방지)
+    std::map<std::string, size_t> last_processed_counts;
     
     while (running) {
         try {
             // 1. closed 캔들이 있는 심볼 목록 조회
             auto symbols = valkey.get_closed_symbols();
             
-            if (!symbols.empty()) {
+            // 심볼이 발견될 때만 로그
+            static size_t last_symbol_count = 0;
+            if (!symbols.empty() && symbols.size() != last_symbol_count) {
                 Logger::info("Found", symbols.size(), "symbols with closed candles");
+                last_symbol_count = symbols.size();
             }
 
             for (const auto& symbol : symbols) {
                 // 2. 마감된 1분봉 가져오기
                 auto closed_candles = valkey.get_closed_candles(symbol);
                 
-                if (closed_candles.empty()) continue;
+                if (closed_candles.empty()) {
+                    last_processed_counts[symbol] = 0; // 비어있으면 카운트 리셋
+                    continue;
+                }
+                
+                // 변경 사항이 없으면 스킵 (고속 폴링 방지)
+                if (last_processed_counts.find(symbol) != last_processed_counts.end() && 
+                    last_processed_counts[symbol] == closed_candles.size()) {
+                    continue;
+                }
+                
+                // 상태 업데이트
+                last_processed_counts[symbol] = closed_candles.size();
                 
                 Logger::info("Processing", symbol, "-", closed_candles.size(), "1m closed candles from Valkey");
                 
@@ -154,6 +178,9 @@ int main(int argc, char* argv[]) {
                     // 6. 저장된 캔들만 Valkey에서 삭제
                     valkey.delete_closed_candles(symbol);
                     Logger::debug("[VALKEY]", symbol, "closed candles deleted");
+                    
+                    // 삭제 후 카운트 0으로 리셋 (다음 루프에서 다시 처리하기 위함)
+                    last_processed_counts[symbol] = 0;
                 } else {
                     Logger::debug("[S3] Waiting for 60 candles, current:", closed_candles.size());
                     // 아직 60개 미만이면 Valkey에서 삭제하지 않음
