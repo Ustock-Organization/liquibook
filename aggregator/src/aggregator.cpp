@@ -18,13 +18,18 @@ std::string Aggregator::align_to_timeframe(const std::string& ymdhm, int minutes
     int min = std::stoi(ymdhm.substr(10, 2));
     
     // 타임프레임 경계로 정렬 (내림)
-    int aligned_min = (min / minutes) * minutes;
+    // [FIX] 60분 이상 타임프레임(4h 등) 지원을 위해 시+분 통합 계산
+    int total_min = hour * 60 + min;
+    int aligned_total = (total_min / minutes) * minutes;
+    
+    int aligned_hour = aligned_total / 60;
+    int aligned_min = aligned_total % 60;
     
     std::ostringstream oss;
     oss << std::setfill('0') << std::setw(4) << year
         << std::setw(2) << month
         << std::setw(2) << day
-        << std::setw(2) << hour
+        << std::setw(2) << aligned_hour
         << std::setw(2) << aligned_min;
     return oss.str();
 }

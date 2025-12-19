@@ -185,6 +185,8 @@
   },
   "active": "2df01f10dcd40573",
   "lastOpenFiles": [
+    "test/market_maker/node_modules/es-define-property/test/index.js",
+    "test/market_maker/node_modules/es-define-property/test",
     "test/market_maker/node_modules/follow-redirects/debug.js",
     "test/market_maker/node_modules/follow-redirects/package.json",
     "test/market_maker/node_modules/proxy-from-env/index.js",
@@ -194,8 +196,6 @@
     "test/market_maker/node_modules/call-bind-apply-helpers/reflectApply.js",
     "test/market_maker/node_modules/call-bind-apply-helpers/functionApply.js",
     "test/market_maker/node_modules/call-bind-apply-helpers/actualApply.js",
-    "test/market_maker/node_modules/call-bind-apply-helpers/functionCall.js",
-    "test/market_maker/node_modules/call-bind-apply-helpers/index.js",
     "docs/CANDLE_ARCHITECTURE.md",
     "docs/CLIENT_DATA_FLOW.md",
     "test/market_maker/node_modules/axios/README.md",

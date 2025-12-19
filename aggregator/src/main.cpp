@@ -155,36 +155,43 @@ int main(int argc, char* argv[]) {
                     }
                 }
                 
-                // 5. S3 백업 (60개 이상일 때만 - 1시간치)
-                // 시간 단위로 그룹핑: YYYYMMDDHHmm에서 YYYYMMDDHHxx 기준
-                if (closed_candles.size() >= 60) {
-                    // 시간별로 그룹화
-                    std::map<std::string, std::vector<Candle>> hourly_groups;
-                    for (const auto& c : closed_candles) {
-                        // time = YYYYMMDDHHmm → YYYYMMDDHH (시간 단위)
-                        std::string hour_key = c.time.substr(0, 10);  // 10자리: YYYYMMDDHH
-                        hourly_groups[hour_key].push_back(c);
-                    }
+                    // 5. S3 백업 (60개 이상일 때만 - 1시간치)
+                    // 시간 단위로 그룹핑: YYYYMMDDHHmm에서 YYYYMMDDHHxx 기준
+                    size_t processed_count = 0;
                     
-                    for (const auto& [hour, hour_candles] : hourly_groups) {
-                        // 60개가 모인 시간만 저장 (정시 마감된 시간)
-                        if (hour_candles.size() >= 60) {
-                            if (s3.put_candles(symbol, "1m", hour_candles)) {
-                                Logger::info("[S3]", symbol, "1m:", hour_candles.size(), "candles saved for hour", hour);
+                    if (closed_candles.size() >= 60) {
+                        // 시간별로 그룹화
+                        std::map<std::string, std::vector<Candle>> hourly_groups;
+                        for (const auto& c : closed_candles) {
+                            // time = YYYYMMDDHHmm → YYYYMMDDHH (시간 단위)
+                            std::string hour_key = c.time.substr(0, 10);  // 10자리: YYYYMMDDHH
+                            hourly_groups[hour_key].push_back(c);
+                        }
+                        
+                        for (const auto& [hour, hour_candles] : hourly_groups) {
+                            // 60개가 모인 시간만 저장 (정시 마감된 시간)
+                            if (hour_candles.size() >= 60) {
+                                if (s3.put_candles(symbol, "1m", hour_candles)) {
+                                    Logger::info("[S3]", symbol, "1m:", hour_candles.size(), "candles saved for hour", hour);
+                                    processed_count += hour_candles.size();
+                                }
                             }
                         }
+                        
+                        // 6. [FIX] 저장된 캔들만 Valkey에서 제거 (Trim)
+                        // 전체 삭제(DEL) 대신 처리된 개수만큼 앞에서부터 제거하여 데이터 유실 방지
+                        if (processed_count > 0) {
+                            if (valkey.trim_closed_candles(symbol, processed_count)) {
+                                Logger::debug("[VALKEY]", symbol, "trimmed", processed_count, "candles");
+                            }
+                        }
+                        
+                        // 처리 후 상태 업데이트 (남은 개수로 갱신)
+                        last_processed_counts[symbol] = closed_candles.size() - processed_count;
+                    } else {
+                        Logger::debug("[S3] Waiting for 60 candles, current:", closed_candles.size());
+                        // 아직 60개 미만이면 Valkey에서 삭제하지 않음
                     }
-                    
-                    // 6. 저장된 캔들만 Valkey에서 삭제
-                    valkey.delete_closed_candles(symbol);
-                    Logger::debug("[VALKEY]", symbol, "closed candles deleted");
-                    
-                    // 삭제 후 카운트 0으로 리셋 (다음 루프에서 다시 처리하기 위함)
-                    last_processed_counts[symbol] = 0;
-                } else {
-                    Logger::debug("[S3] Waiting for 60 candles, current:", closed_candles.size());
-                    // 아직 60개 미만이면 Valkey에서 삭제하지 않음
-                }
             }
             
         } catch (const std::exception& e) {

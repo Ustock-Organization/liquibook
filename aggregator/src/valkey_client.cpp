@@ -170,4 +170,20 @@ bool ValkeyClient::delete_closed_candles(const std::string& symbol) {
     return ok;
 }
 
+bool ValkeyClient::trim_closed_candles(const std::string& symbol, size_t count) {
+    if (!ctx_ || count == 0) return false;
+    
+    std::string key = "candle:closed:1m:" + symbol;
+    // LTRIM key 0 -(count + 1) : 오래된 count개 삭제 (뒤에서부터 자름)
+    // Newest(0) ... Oldest(N-1) 구조에서 Oldest 쪽 삭제
+    std::string count_str = std::to_string(count + 1);
+    redisReply* reply = (redisReply*)redisCommand(ctx_, "LTRIM %s 0 -%s", key.c_str(), count_str.c_str());
+    
+    if (!reply) return false;
+    
+    bool ok = (reply->type == REDIS_REPLY_STATUS && std::string(reply->str) == "OK");
+    freeReplyObject(reply);
+    return ok;
+}
+
 } // namespace aggregator
