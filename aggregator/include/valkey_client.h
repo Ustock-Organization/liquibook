@@ -38,8 +38,11 @@ public:
     // 심볼 목록 조회 (candle:closed:1m:* 패턴)
     std::vector<std::string> get_closed_symbols();
     
-    // 처리 완료 후 삭제
+    // 처리 완료 후 삭제 (전체)
     bool delete_closed_candles(const std::string& symbol);
+    
+    // 처리 완료 후 삭제 (부분 - 오래된 순)
+    bool trim_closed_candles(const std::string& symbol, size_t count);
     
 private:
     std::string host_;
