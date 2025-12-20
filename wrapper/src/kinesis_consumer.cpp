@@ -98,13 +98,24 @@ void KinesisConsumer::stop() {
 }
 
 void KinesisConsumer::consumeLoop() {
+    long long poll_count = 0;
     while (running_) {
         bool any_records = false;
+        poll_count++;
+        
+        if (poll_count % 100 == 0) {
+            Logger::info("KinesisConsumer heartbeat: polling shards...");
+        }
         
         for (auto& [shard_id, iterator] : shard_iterators_) {
             if (!running_) break; // 빠른 종료를 위한 체크
 
-            if (iterator.empty()) continue;
+            if (iterator.empty()) {
+                if (poll_count % 100 == 0) {
+                     Logger::warn("Shard iterator empty for:", shard_id);
+                }
+                continue;
+            }
             
             Aws::Kinesis::Model::GetRecordsRequest request;
             request.SetShardIterator(iterator);
@@ -122,7 +133,15 @@ void KinesisConsumer::consumeLoop() {
             }
             
             const auto& result = outcome.GetResult();
-            iterator = result.GetNextShardIterator();
+            std::string next_iterator = result.GetNextShardIterator();
+            
+            if (next_iterator.empty()) {
+                Logger::warn("Shard iterator ended explicitly for:", shard_id); // This is important
+            } else if (poll_count % 100 == 0 && shard_id == shard_iterators_.begin()->first) {
+                 Logger::debug("Shard polling active, records:", result.GetRecords().size());
+            }
+
+            iterator = next_iterator;
             
             for (const auto& record : result.GetRecords()) {
                 any_records = true;

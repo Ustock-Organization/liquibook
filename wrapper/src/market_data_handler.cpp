@@ -27,8 +27,10 @@ void MarketDataHandler::on_accept(const OrderPtr& order) {
     
     // Direct WebSocket notification (preferred)
     if (notifier_) {
+        // Logger::debug("TRACE: Calling sendOrderStatus for ACCEPTED");
         notifier_->sendOrderStatus(order->user_id(), order->order_id(), 
                                    order->symbol(), "ACCEPTED");
+        // Logger::debug("TRACE: sendOrderStatus completed");
     }
 }
 
