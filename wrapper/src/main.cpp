@@ -97,8 +97,18 @@ int main(int argc, char* argv[]) {
         }
         
         // NotificationClient 생성 (WebSocket 직접 알림)
+        // 중요: RedisClient는 Thread-safe하지 않으므로, 백그라운드 스레드용으로 별도 연결 생성
+        RedisClient notification_redis(depth_cache_host, depth_cache_port);
+        bool notification_redis_connected = false;
+        if (depth_connected) {
+             notification_redis_connected = notification_redis.connect();
+             if (notification_redis_connected) {
+                 Logger::info("Redis (notification) connected");
+             }
+        }
+
         std::string ws_endpoint = Config::get("WEBSOCKET_ENDPOINT", "");
-        NotificationClient notifier(depth_connected ? &depth_cache : nullptr);
+        NotificationClient notifier(notification_redis_connected ? &notification_redis : nullptr);
         bool notifier_enabled = false;
         if (!ws_endpoint.empty()) {
             notifier_enabled = notifier.initialize(ws_endpoint, aws_region);
