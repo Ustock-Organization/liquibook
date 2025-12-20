@@ -30,6 +30,9 @@ public:
     bool ltrim(const std::string& key, long start, long stop);
     std::vector<std::string> lrange(const std::string& key, long start, long stop);
     
+    // Set 연산 (연결 관리용)
+    std::vector<std::string> smembers(const std::string& key);
+    
     // 해시 연산 (캔들용)
     bool hset(const std::string& key, const std::string& field, const std::string& value);
     std::optional<std::string> hget(const std::string& key, const std::string& field);

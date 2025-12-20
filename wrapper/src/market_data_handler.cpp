@@ -1,5 +1,6 @@
 #include "market_data_handler.h"
 #include "redis_client.h"
+#include "notification_client.h"
 #include "iproducer.h"
 #include "logger.h"
 #include "metrics.h"
@@ -13,19 +14,21 @@
 
 namespace aws_wrapper {
 
-MarketDataHandler::MarketDataHandler(IProducer* producer, RedisClient* redis, DynamoDBClient* dynamodb)
-    : producer_(producer), redis_(redis), dynamodb_(dynamodb) {
+MarketDataHandler::MarketDataHandler(IProducer* producer, RedisClient* redis, DynamoDBClient* dynamodb, NotificationClient* notifier)
+    : producer_(producer), redis_(redis), dynamodb_(dynamodb), notifier_(notifier) {
     Logger::info("MarketDataHandler initialized, Redis:", redis_ ? "connected" : "none",
-                 "DynamoDB:", dynamodb_ ? "connected" : "none");
+                 "DynamoDB:", dynamodb_ ? "connected" : "none",
+                 "Notifier:", notifier_ ? "enabled" : "disabled");
 }
 
 void MarketDataHandler::on_accept(const OrderPtr& order) {
     Logger::info("Order ACCEPTED:", order->order_id(), order->symbol());
     Metrics::instance().incrementOrdersAccepted();
     
-    if (producer_) {
-        producer_->publishOrderStatus(order->symbol(), order->order_id(), 
-                                       order->user_id(), "ACCEPTED");
+    // Direct WebSocket notification (preferred)
+    if (notifier_) {
+        notifier_->sendOrderStatus(order->user_id(), order->order_id(), 
+                                   order->symbol(), "ACCEPTED");
     }
 }
 
@@ -33,9 +36,9 @@ void MarketDataHandler::on_reject(const OrderPtr& order, const char* reason) {
     Logger::warn("Order REJECTED:", order->order_id(), "reason:", reason);
     Metrics::instance().incrementOrdersRejected();
     
-    if (producer_) {
-        producer_->publishOrderStatus(order->symbol(), order->order_id(), 
-                                       order->user_id(), "REJECTED", reason);
+    if (notifier_) {
+        notifier_->sendOrderStatus(order->user_id(), order->order_id(), 
+                                   order->symbol(), "REJECTED", reason);
     }
 }
 
@@ -129,13 +132,12 @@ void MarketDataHandler::on_fill(const OrderPtr& order,
     // Ticker 캐시 업데이트 (Sub 데이터용)
     updateTickerCache(symbol, fill_price);
     
-    // order-status 스트림으로 체결 알림 발행 (fills 스트림 삭제됨)
-    if (producer_) {
-        // 양쪽 사용자에게 FILLED 알림
-        producer_->publishOrderStatus(symbol, order->order_id(), 
-                                       order->user_id(), "FILLED");
-        producer_->publishOrderStatus(symbol, matched_order->order_id(), 
-                                       matched_order->user_id(), "FILLED");
+    // Direct WebSocket notification for both parties
+    if (notifier_) {
+        notifier_->sendOrderStatus(order->user_id(), order->order_id(), 
+                                   symbol, "FILLED");
+        notifier_->sendOrderStatus(matched_order->user_id(), matched_order->order_id(), 
+                                   symbol, "FILLED");
     }
 }
 
@@ -143,18 +145,18 @@ void MarketDataHandler::on_fill(const OrderPtr& order,
 void MarketDataHandler::on_cancel(const OrderPtr& order) {
     Logger::info("Order CANCELLED:", order->order_id());
     
-    if (producer_) {
-        producer_->publishOrderStatus(order->symbol(), order->order_id(), 
-                                       order->user_id(), "CANCELLED");
+    if (notifier_) {
+        notifier_->sendOrderStatus(order->user_id(), order->order_id(), 
+                                   order->symbol(), "CANCELLED");
     }
 }
 
 void MarketDataHandler::on_cancel_reject(const OrderPtr& order, const char* reason) {
     Logger::warn("Cancel REJECTED:", order->order_id(), "reason:", reason);
     
-    if (producer_) {
-        producer_->publishOrderStatus(order->symbol(), order->order_id(), 
-                                       order->user_id(), "CANCEL_REJECTED", reason);
+    if (notifier_) {
+        notifier_->sendOrderStatus(order->user_id(), order->order_id(), 
+                                   order->symbol(), "CANCEL_REJECTED", reason);
     }
 }
 
@@ -164,18 +166,18 @@ void MarketDataHandler::on_replace(const OrderPtr& order,
     Logger::info("Order REPLACED:", order->order_id(), 
                  "delta:", size_delta, "new_price:", new_price);
     
-    if (producer_) {
-        producer_->publishOrderStatus(order->symbol(), order->order_id(), 
-                                       order->user_id(), "REPLACED");
+    if (notifier_) {
+        notifier_->sendOrderStatus(order->user_id(), order->order_id(), 
+                                   order->symbol(), "REPLACED");
     }
 }
 
 void MarketDataHandler::on_replace_reject(const OrderPtr& order, const char* reason) {
     Logger::warn("Replace REJECTED:", order->order_id(), "reason:", reason);
     
-    if (producer_) {
-        producer_->publishOrderStatus(order->symbol(), order->order_id(), 
-                                       order->user_id(), "REPLACE_REJECTED", reason);
+    if (notifier_) {
+        notifier_->sendOrderStatus(order->user_id(), order->order_id(), 
+                                   order->symbol(), "REPLACE_REJECTED", reason);
     }
 }
 

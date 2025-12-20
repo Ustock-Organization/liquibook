@@ -2,6 +2,7 @@
 #include "logger.h"
 #include "engine_core.h"
 #include "market_data_handler.h"
+#include "notification_client.h"
 #include "grpc_service.h"
 #include "redis_client.h"
 #include "metrics.h"
@@ -95,9 +96,25 @@ int main(int argc, char* argv[]) {
             Logger::info("DynamoDB connected:", dynamodb_table);
         }
         
+        // NotificationClient 생성 (WebSocket 직접 알림)
+        std::string ws_endpoint = Config::get("WEBSOCKET_ENDPOINT", "");
+        NotificationClient notifier(depth_connected ? &depth_cache : nullptr);
+        bool notifier_enabled = false;
+        if (!ws_endpoint.empty()) {
+            notifier_enabled = notifier.initialize(ws_endpoint, aws_region);
+            if (notifier_enabled) {
+                Logger::info("NotificationClient enabled:", ws_endpoint);
+            } else {
+                Logger::warn("NotificationClient initialization failed");
+            }
+        } else {
+            Logger::warn("WEBSOCKET_ENDPOINT not set - notifications disabled");
+        }
+        
         // 핸들러 및 엔진 생성
         MarketDataHandler handler(&producer, depth_connected ? &depth_cache : nullptr, 
-                                  dynamodb_connected ? &dynamodb : nullptr);
+                                  dynamodb_connected ? &dynamodb : nullptr,
+                                  notifier_enabled ? &notifier : nullptr);
         EngineCore engine(&handler);
         
         // === 시작 시 Redis에서 스냅샷 복원 ===

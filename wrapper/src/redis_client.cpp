@@ -205,6 +205,27 @@ std::vector<std::string> RedisClient::lrange(const std::string& key, long start,
     return result;
 }
 
+std::vector<std::string> RedisClient::smembers(const std::string& key) {
+    std::vector<std::string> result;
+    if (!context_) return result;
+    
+    auto reply = static_cast<redisReply*>(
+        redisCommand(context_, "SMEMBERS %s", key.c_str()));
+    
+    if (!reply) return result;
+    
+    if (reply->type == REDIS_REPLY_ARRAY) {
+        for (size_t i = 0; i < reply->elements; ++i) {
+            if (reply->element[i]->type == REDIS_REPLY_STRING) {
+                result.emplace_back(reply->element[i]->str, reply->element[i]->len);
+            }
+        }
+    }
+    
+    freeReplyObject(reply);
+    return result;
+}
+
 // === Hash 연산 (캔들용) ===
 
 bool RedisClient::hset(const std::string& key, const std::string& field, const std::string& value) {

@@ -14,8 +14,9 @@
 
 namespace aws_wrapper {
 
-class RedisClient;      // forward declaration
-class DynamoDBClient;   // forward declaration
+class RedisClient;          // forward declaration
+class DynamoDBClient;       // forward declaration
+class NotificationClient;   // forward declaration
 
 // Depth levels: 10 bid + 10 ask
 using OrderBook = liquibook::book::DepthOrderBook<OrderPtr, 10>;
@@ -41,7 +42,8 @@ class MarketDataHandler
 {
 public:
     explicit MarketDataHandler(IProducer* producer, RedisClient* redis = nullptr,
-                                DynamoDBClient* dynamodb = nullptr);
+                                DynamoDBClient* dynamodb = nullptr,
+                                NotificationClient* notifier = nullptr);
     
     // === OrderListener ===
     void on_accept(const OrderPtr& order) override;
@@ -79,6 +81,7 @@ private:
     IProducer* producer_;
     RedisClient* redis_;
     DynamoDBClient* dynamodb_;
+    NotificationClient* notifier_;
     std::unordered_map<std::string, DayData> symbol_day_data_;
     
     void updateTickerCache(const std::string& symbol, uint64_t price);

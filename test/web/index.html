@@ -626,10 +626,11 @@
                 return;
             }
             
-            // Order Status Update (Private)
-            if (msg.type === 'ORDER_STATUS') {
-                updateOrderLocally(msg.data);
-                adminLog(`Order Status: ${msg.data.status} #${msg.data.order_id}`, 'in');
+            // Order Status Update (Private) - Engine uses 'event', Lambda uses 'type'
+            if (msg.type === 'ORDER_STATUS' || msg.event === 'ORDER_STATUS') {
+                const data = msg.data || msg;  // Lambda wraps in data, Engine sends flat
+                updateOrderLocally(data);
+                adminLog(`📋 Order: ${data.status} #${data.order_id?.substring(0, 15) || 'unknown'}`, 'in');
                 return;
             }
             
