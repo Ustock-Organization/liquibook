@@ -1,15 +1,42 @@
-// order-router Lambda - 주문 라우터 (Kinesis 버전)
-// Supabase 잔고 확인 + UUID 생성 + Kinesis 발행
+// order-router Lambda - 주문 라우터 (Kinesis 버전) - Optimized
+// Supabase 잔고 확인 + UUID 생성 + Kinesis 발행 + CANCEL/REPLACE 지원
 import { KinesisClient, PutRecordCommand } from '@aws-sdk/client-kinesis';
+import { NodeHttpHandler } from "@smithy/node-http-handler";
+import https from 'https';
 import Redis from 'ioredis';
 import { createClient } from '@supabase/supabase-js';
+import crypto from 'crypto';
 
-const kinesis = new KinesisClient({ region: process.env.AWS_REGION || 'ap-northeast-2' });
-
-const valkey = new Redis({
-  host: process.env.VALKEY_HOST,
-  port: parseInt(process.env.VALKEY_PORT || '6379'),
+// === Optimization: TCP Keep-Alive for AWS SDK ===
+const agent = new https.Agent({
+  keepAlive: true,
+  maxSockets: 50,
+  rejectUnauthorized: true,
 });
+
+const kinesis = new KinesisClient({ 
+  region: process.env.AWS_REGION || 'ap-northeast-2',
+  requestHandler: new NodeHttpHandler({
+    httpsAgent: agent
+  })
+});
+
+// === Optimization: Redis Connection Reuse ===
+// 전역 변수로 선언하여 효율적인 재사용 (Warm Start 시 연결 유지)
+let valkey = null;
+
+function getValkey() {
+  if (!valkey) {
+    valkey = new Redis({
+      host: process.env.VALKEY_HOST,
+      port: parseInt(process.env.VALKEY_PORT || '6379'),
+      lazyConnect: true, // 필요할 때 연결
+      connectTimeout: 2000,
+      retryStrategy: (times) => Math.min(times * 50, 2000),
+    });
+  }
+  return valkey;
+}
 
 // Supabase 클라이언트 (지연 초기화 - NAT Gateway 없을 시 사용 안함)
 let supabase = null;
@@ -23,13 +50,9 @@ function getSupabase() {
   return supabase;
 }
 
-// UUID v4 생성 (crypto 사용)
-function generateOrderId() {
-  const timestamp = Date.now().toString(36);
-  const randomPart = Array.from(crypto.getRandomValues(new Uint8Array(8)))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
-  return `ord_${timestamp}_${randomPart}`;
+// UUID v4 생성 (crypto 사용 - 빠름)
+function generateOrderId(prefix = 'ord') {
+  return `${prefix}_${crypto.randomUUID().split('-')[0]}${Date.now().toString(36)}`;
 }
 
 // Supabase에서 사용자 잔고 확인 (현재 비활성화 - NAT Gateway 필요)
@@ -51,111 +74,169 @@ export const handler = async (event) => {
     return { statusCode: 200, headers, body: '' };
   }
   
+  // Context 초기화
+  const redis = getValkey();
+  
   try {
-    let order;
+    let requestBody;
     if (typeof event.body === 'string') {
-      order = JSON.parse(event.body);
+      requestBody = JSON.parse(event.body);
     } else if (event.body) {
-      order = event.body;
+      requestBody = event.body;
     } else {
-      order = event;
+      requestBody = event;
     }
     
-    // 필수 필드 검증
-    if (!order.symbol || !order.side || !order.quantity) {
+    // 필수 필드 검증 (공통)
+    if (!requestBody.symbol || !requestBody.user_id) {
       return {
         statusCode: 400,
         headers,
-        body: JSON.stringify({ error: 'Invalid order format: symbol, side, quantity required' }),
+        body: JSON.stringify({ error: 'Missing required fields: symbol, user_id' }),
       };
     }
+
+    const { 
+      symbol, 
+      user_id, 
+      action = 'ADD', // 기본값 ADD
+      order_id,      // CANCEL/REPLACE 시 필수
+      price = 0,     // MARKET 주문 시 0
+      quantity = 0,
+      side = 'BUY',
+      type = 'LIMIT', // LIMIT or MARKET
+      qty_delta = 0,  // REPLACE 시 수량 변경분
+      conditions = null // {all_or_none: bool, immediate_or_cancel: bool}
+    } = requestBody;
     
-    // 사용자 ID 확인
-    const userId = order.user_id;
-    if (!userId) {
-      return {
-        statusCode: 401,
-        headers,
-        body: JSON.stringify({ error: 'user_id is required' }),
+    // 거래 가능 종목인지 가볍게 체크 (Redis Cache)
+    // 최적화: 캐시가 없으면 통과시키고 엔진에서 Reject 되게 하는게 낫다 (Latency 우선)
+    // 여기서는 Redis에 데이터가 확실히 있다고 가정하고 체크
+    // const isActiveSymbol = await redis.sismember('active:symbols', symbol);
+    // if (!isActiveSymbol) { ... } -> 10ms 소요되므로 일단 생략하거나 병렬 처리 권장
+
+    // === Action별 처리 ===
+    let kinesisRecord = {};
+    let finalOrderId = order_id;
+
+    if (action === 'ADD') {
+      // 신규 주문
+      finalOrderId = generateOrderId();
+      
+      let finalPrice = Number(price);
+      let orderType = type;
+      let finalConditions = conditions || {};
+
+      // === 시장가 주문 처리 ===
+      if (type === 'MARKET') {
+        // 1. 호가 존재 확인 (Valkey에서 depth 조회)
+        try {
+          const depthJson = await redis.get(`depth:${symbol}`);
+          const depth = depthJson ? JSON.parse(depthJson) : null;
+          
+          const isBuy = (side === 'BUY' || side === 'buy');
+          const hasLiquidity = isBuy 
+            ? (depth?.a?.length > 0)   // 매수 시 매도호가 필요
+            : (depth?.b?.length > 0);  // 매도 시 매수호가 필요
+          
+          if (!hasLiquidity) {
+            return {
+              statusCode: 400,
+              headers,
+              body: JSON.stringify({ 
+                error: 'MARKET_NO_LIQUIDITY',
+                message: '시장가 주문 불가: 오더북이 비어있습니다'
+              })
+            };
+          }
+        } catch (depthErr) {
+          console.warn('Depth check failed, proceeding anyway:', depthErr.message);
+        }
+        
+        // 2. 가격 설정 (극단적 가격)
+        if (side === 'BUY' || side === 'buy') {
+          finalPrice = 2147483647; // MAX_INT
+        } else {
+          finalPrice = 0;
+        }
+        
+        // 3. IOC 강제 적용 (체결 후 잔량 자동 취소)
+        finalConditions.immediate_or_cancel = true;
+      }
+
+      kinesisRecord = {
+        action: 'ADD',
+        order_id: finalOrderId,
+        user_id: user_id,
+        symbol: symbol,
+        is_buy: (side === 'BUY' || side === 'buy'),
+        price: finalPrice,
+        quantity: Number(quantity),
+        order_type: orderType,
+        timestamp: Date.now(),
+        conditions: finalConditions
       };
+
+      // 잔고 확인 (신규 주문만)
+      // const balanceCheck = await checkBalance(...)
+      
+    } else if (action === 'CANCEL') {
+      // 주문 취소
+      if (!order_id) throw new Error('order_id is required for CANCEL');
+      kinesisRecord = {
+        action: 'CANCEL',
+        order_id: order_id,
+        user_id: user_id,
+        symbol: symbol,
+        timestamp: Date.now()
+      };
+
+    } else if (action === 'REPLACE') {
+      // 주문 정정
+      if (!order_id) throw new Error('order_id is required for REPLACE');
+      
+      // qty_delta 검증: 0이면 정정이 안 일어날 수 있음.
+      // 사용자가 '새 수량'을 보냈다면, 이전 수량을 모르므로 계산 불가.
+      // 따라서 API는 반드시 'delta'를 받아야 함. (Web UI에서 delta 계산해서 보냄)
+      
+      kinesisRecord = {
+        action: 'REPLACE',
+        order_id: order_id,
+        user_id: user_id,
+        symbol: symbol,
+        qty_delta: Number(qty_delta), // 수량 변경분 (+/-)
+        new_price: Number(price),     // 새 가격
+        timestamp: Date.now()
+      };
+
+    } else {
+      return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid action' }) };
     }
     
-    // 거래 가능 종목인지 확인
-    const isActiveSymbol = await valkey.sismember('active:symbols', order.symbol);
-    if (!isActiveSymbol) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ 
-          error: 'Symbol not available for trading',
-          symbol: order.symbol,
-          message: '등록되지 않은 종목입니다'
-        }),
-      };
-    }
+    // Valkey Route Info 조회 (필요 시) - 생략 가능하면 생략 (Latency Opt)
+    // const routeInfo = await redis.get(`route:${symbol}`); ...
     
-    // Supabase 잔고 확인 (선택적 - 미설정 시 건너뜀)
-    console.log('Step 1: Balance check starting...');
-    const balanceCheck = await checkBalance(userId, order.side, order.symbol, order.price || 0, order.quantity);
-    console.log('Step 1: Balance check done:', balanceCheck);
-    if (!balanceCheck.success) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ 
-          error: 'Balance check failed', 
-          reason: balanceCheck.reason 
-        }),
-      };
-    }
+    const streamName = process.env.KINESIS_ORDERS_STREAM || 'supernoba-orders';
     
-    // Valkey에서 라우팅 정보 조회
-    console.log('Step 2: Valkey get starting...');
-    const routeInfo = await valkey.get(`route:${order.symbol}`);
-    console.log('Step 2: Valkey get done:', routeInfo);
-    const route = routeInfo ? JSON.parse(routeInfo) : { status: 'ACTIVE' };
-    
-    // Kinesis 스트림 선택
-    const streamName = route.status === 'MIGRATING' 
-      ? 'supernoba-pending-orders' 
-      : (process.env.KINESIS_ORDERS_STREAM || 'supernoba-orders');
-    
-    // 주문 ID 생성 (UUID 기반)
-    const orderId = generateOrderId();
-    
-    // 주문 메시지 구성
-    const orderMessage = {
-      action: 'ADD',
-      order_id: orderId,
-      user_id: userId,
-      symbol: order.symbol,
-      is_buy: order.side === 'BUY' || order.side === 'buy',
-      price: order.price || 0,
-      quantity: order.quantity,
-      order_type: order.order_type || 'LIMIT',
-      timestamp: Date.now(),
-    };
-    
-    // Kinesis에 발행
-    console.log('Step 3: Kinesis PutRecord starting...');
+    // Kinesis 발행 (최적화된 Client 사용)
     await kinesis.send(new PutRecordCommand({
       StreamName: streamName,
-      Data: Buffer.from(JSON.stringify(orderMessage)),
-      PartitionKey: order.symbol,  // 종목별 순서 보장
+      Data: Buffer.from(JSON.stringify(kinesisRecord)),
+      PartitionKey: symbol,  // 순서 보장
     }));
-    console.log('Step 3: Kinesis PutRecord done!');
     
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({ 
-        message: 'Order accepted',
-        order_id: orderId,
-        stream: streamName,
-        symbol: order.symbol,
-        side: order.side,
+        message: `${action} accepted`,
+        order_id: finalOrderId,
+        action: action,
+        symbol: symbol,
+        stream: streamName
       }),
     };
+    
   } catch (error) {
     console.error('Error:', error);
     return {

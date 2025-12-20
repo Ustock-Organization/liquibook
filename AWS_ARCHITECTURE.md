@@ -245,6 +245,44 @@ sequenceDiagram
     end
 ```
 
+### 주문 상태 실시간 알림 흐름
+
+```mermaid
+sequenceDiagram
+    participant U as 사용자 앱
+    participant WS as WebSocket API Gateway
+    participant L1 as connect-handler
+    participant V as Valkey
+    participant E as Engine (C++)
+    participant K as Kinesis order-status
+    participant L2 as order-status Lambda
+    
+    Note over U,L1: 1단계: 사용자 연결
+    U->>WS: WebSocket 연결 요청
+    WS->>L1: $connect
+    L1->>V: 연결 정보 저장
+    Note right of V: user:{userId}:connections = [connId1, connId2]
+    L1-->>U: 연결 완료
+    
+    Note over E,K: 2단계: 주문 상태 변경
+    E->>E: 주문 처리 (체결/거부/취소)
+    E->>K: 상태 이벤트 발행
+    Note right of K: {user_id, order_id, status, reason}
+    
+    Note over K,U: 3단계: 사용자에게 알림
+    K->>L2: Kinesis 트리거
+    L2->>V: user:{userId}:connections 조회
+    V-->>L2: [connId1, connId2]
+    L2->>WS: PostToConnection (connId1)
+    L2->>WS: PostToConnection (connId2)
+    WS-->>U: 실시간 알림 수신
+```
+
+**사용자 특정 방법:**
+1. 연결 시: `user:{userId}:connections` Set에 connectionId 저장
+2. 주문 처리 시: Engine이 user_id 포함하여 Kinesis 발행
+3. Lambda 수신 시: user_id로 연결 목록 조회 → 모든 기기에 전송
+
 ---
 
 ## 차트 데이터 아키텍처
@@ -260,7 +298,6 @@ flowchart TD
     subgraph Valkey["Valkey (실시간)"]
         ActiveCandle["candle:1m:SYMBOL<br/>(활성 캔들)"]
         ClosedCandles["candle:closed:1m:SYMBOL<br/>(마감 캔들 버퍼)"]
-        Trades["trades:SYMBOL<br/>(체결 버퍼)"]
     end
     
     subgraph Streamer["Node.js Streamer"]
@@ -279,7 +316,7 @@ flowchart TD
     end
     
     Trade -->|Lua Script| ActiveCandle
-    Trade -->|저장| Trades
+    Trade -->|직접 저장| DDB
     
     ActiveCandle -->|50ms| Fast
     Fast -->|캐시| Slow
@@ -375,7 +412,6 @@ candleSeries.update(aggregatedCandle)  ← 마지막 캔들만 업데이트 (권
 | `candle:1m:SYMBOL`          | Hash   | 활성 1분봉 (o,h,l,c,v,t)                                | C++ Lua Script                            |
 | `candle:5m:SYMBOL`          | Hash   | 활성 5분봉                                              | Streamer 롤업                               |
 | `candle:closed:1m:SYMBOL`   | List   | 마감 1분봉 버퍼 (백업 전)                                    | C++ Lua Script                            |
-| `trades:SYMBOL`             | List   | 체결 버퍼 (TTL 24h)                                     | C++ Engine                                |
 
 ### Backup Cache (영구 데이터)
 
@@ -426,8 +462,9 @@ candleSeries.update(aggregatedCandle)  ← 마지막 캔들만 업데이트 (권
 | `Supernoba-connect-handler` | `$connect` | JWT/testMode 검증 → `ws:*`, `realtime:connections` 저장 | ✅ |
 | `Supernoba-subscribe-handler` | `subscribe`, `$default` | Main/Sub 구독 등록 | ✅ |
 | `Supernoba-disconnect-handler` | `$disconnect` | 구독 정리, stale 연결 정리 | ✅ |
-| `Supernoba-trades-backup-handler` | EventBridge (10분) | `candle:closed:*` → S3 + DynamoDB | ✅ |
+| `Supernoba-trades-backup-handler` | EventBridge (3분) | `candle:closed:*` → S3 + DynamoDB | ✅ |
 | `Supernoba-chart-data-handler` | API Gateway HTTP | Hot(Valkey) + Cold(DynamoDB) 병합 조회 | ✅ |
+| `Supernoba-order-status-handler` | Kinesis | order-status → WebSocket 알림 | ✅ |
 
 ### 인증 관련 환경변수 (connect-handler)
 
@@ -581,7 +618,11 @@ cd ~/liquibook/streamer/node
 | 2025-12-14 | 테스트 콘솔 캔들 테스트 자동화 추가 |
 | 2025-12-13 | C++ Lua Script 캔들 집계 구현 |
 | 2025-12-13 | Hot/Cold 하이브리드 차트 데이터 조회 |
+| 2025-12-20 | Engine 직접 DynamoDB 저장, trades:* 캐시 제거 |
+| 2025-12-20 | order-status WebSocket Lambda 추가 |
+| 2025-12-20 | 시장가 주문 IOC 강제 + 호가 검증 |
+| 2025-12-20 | 클라이언트 로그인 가드 추가 |
 
 ---
 
-*최종 업데이트: 2025-12-16*
+*최종 업데이트: 2025-12-20*

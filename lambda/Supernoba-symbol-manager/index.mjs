@@ -39,14 +39,33 @@ export const handler = async (event) => {
   
   try {
     // GET /symbols - 종목 목록 조회 (공개)
+    // "호가 캐시(depth:*)"에 존재하는 모든 종목을 스캔하여 반환
     if (method === 'GET' && !symbol) {
-      const symbols = await valkey.smembers('active:symbols');
+      const symbols = new Set();
+      let cursor = '0';
+      
+      do {
+        // depth:* 키 스캔 (실제 엔진이 돌고 있는 종목들)
+        const [nextCursor, keys] = await valkey.scan(cursor, 'MATCH', 'depth:*', 'COUNT', 100);
+        cursor = nextCursor;
+        
+        keys.forEach(key => {
+          // depth:TEST -> TEST
+          const sym = key.replace('depth:', '');
+          if(sym) symbols.add(sym);
+        });
+      } while (cursor !== '0');
+
+      const symbolList = Array.from(symbols).sort();
+      console.log(`Found ${symbolList.length} active symbols from cache:`, symbolList);
+
       return {
         statusCode: 200,
         headers,
         body: JSON.stringify({
-          symbols: symbols.sort(),
-          count: symbols.length,
+          symbols: symbolList,
+          count: symbolList.length,
+          source: 'cache_scan'
         }),
       };
     }

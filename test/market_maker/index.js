@@ -22,6 +22,7 @@ let totalOrders = 0;
 let lastPrice = 0;
 let intervalId = null;
 let lastError = '';
+let lastOrderInfo = null; // { side, price, quantity, time }
 
 // === UI Helpers ===
 function clearScreen() {
@@ -48,6 +49,19 @@ function printStatus() {
     console.log(`  Orders    : ${totalOrders}`);
     if (lastError) {
         console.log(`  Error     : ${chalk.red.bold(lastError)}`);
+    }
+    console.log('');
+    
+    // --- 최근 주문 정보 ---
+    console.log(chalk.bold('📝  Last Order'));
+    if (lastOrderInfo) {
+        const sideColor = lastOrderInfo.side === 'BUY' ? chalk.green : chalk.red;
+        console.log(`  Side      : ${sideColor.bold(lastOrderInfo.side)}`);
+        console.log(`  Price     : ${chalk.yellow(lastOrderInfo.price)}`);
+        console.log(`  Quantity  : ${chalk.cyan(lastOrderInfo.quantity)}`);
+        console.log(`  Time      : ${chalk.gray(lastOrderInfo.time)}`);
+    } else {
+        console.log(chalk.gray('  (No orders yet)'));
     }
     console.log('');
     
@@ -110,6 +124,13 @@ async function placeOrder() {
         ]).then(() => {
             totalOrders += 2;
             lastError = '';
+            // 최근 주문 정보 저장
+            lastOrderInfo = {
+                side: 'BUY/SELL',
+                price: price,
+                quantity: quantity,
+                time: new Date().toLocaleTimeString('ko-KR')
+            };
             process.stdout.write(chalk.gray('.'));
         }).catch(err => {
             lastError = err.message;

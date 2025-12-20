@@ -3,2682 +3,1080 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supernoba API Test Console</title>
+    <title>Supernoba Exchange Terminal</title>
     <!-- TradingView Lightweight Charts -->
     <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
-    <!--
-    =============================================================================
-    [SECTION 1] CSS STYLES & LAYOUT
-    - Dark Theme Variables
-    - Flex/Grid Layouts
-    - Component Styles (Card, Orderbook, Chart)
-    =============================================================================
-    -->
     <style>
+        /* ... Existing CSS ... */
         :root {
-            --bg-dark: #0d1117;
-            --bg-card: #161b22;
-            --bg-input: #21262d;
+            --bg-base: #0d1117;
+            --bg-panel: #161b22;
+            --bg-input: #21262d; 
             --border: #30363d;
-            --text: #c9d1d9;
-            --text-muted: #8b949e;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
             --accent: #58a6ff;
-            --success: #3fb950;
+            --buy: #238636;
+            --sell: #da3633;
             --warning: #d29922;
-            --danger: #f85149;
-            --buy: #3fb950;
-            --sell: #f85149;
-            --purple: #a371f7;
         }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: var(--bg-dark);
-            color: var(--text);
-            min-height: 100vh;
-            padding: 10px;
+            background-color: var(--bg-base);
+            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; 
         }
 
-        .container {
-            max-width: 1800px;
-            margin: 0 auto;
-        }
-
+        /* --- Header --- */
         header {
-            text-align: center;
-            margin-bottom: 30px;
-            padding: 20px;
-            background: linear-gradient(135deg, #1a1f25 0%, #0d1117 100%);
-            border-radius: 12px;
-            border: 1px solid var(--border);
+            height: auto; min-height: 48px;
+            background-color: var(--bg-panel);
+            border-bottom: 1px solid var(--border);
+            display: flex; flex-direction: column;
+            padding: 8px 16px; gap: 8px;
         }
+        .header-row { display: flex; align-items: center; gap: 12px; width: 100%; }
+        
+        .logo { font-weight: bold; font-size: 1.1rem; color: var(--text-primary); text-decoration: none; }
+        .logo span { color: var(--accent); }
 
-        header h1 {
-            font-size: 2rem;
-            background: linear-gradient(135deg, var(--accent), #a371f7);
-            background-clip: text;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        header p {
-            color: var(--text-muted);
-            margin-top: 8px;
-        }
-
-        .main-layout {
-            display: flex;
-            gap: 20px;
-        }
-
-        .left-panel {
-            width: 320px;
-            flex-shrink: 0;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-
-        .right-panel {
+        /* Config Controls */
+        .config-input { background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary); padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 0.75rem; }
+        .config-label { font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 4px; }
+        
+        /* --- Grid & Panels --- */
+        .grid-container {
             flex: 1;
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-            gap: 20px;
-            align-content: start;
-        }
-
-        .card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 20px;
-        }
-
-        .card h2 {
-            font-size: 1.1rem;
-            margin-bottom: 15px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .card h2::before {
-            content: '';
-            width: 4px;
-            height: 20px;
-            background: var(--accent);
-            border-radius: 2px;
-        }
-
-        .form-group {
-            margin-bottom: 12px;
-        }
-
-        label {
-            display: block;
-            font-size: 0.85rem;
-            color: var(--text-muted);
-            margin-bottom: 4px;
-        }
-
-        input, select, textarea {
-            width: 100%;
-            padding: 10px 12px;
-            background: var(--bg-input);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            color: var(--text);
-            font-size: 0.95rem;
-            transition: border-color 0.2s;
-        }
-
-        input:focus, select:focus, textarea:focus {
-            outline: none;
-            border-color: var(--accent);
-        }
-
-        textarea {
-            min-height: 100px;
-            font-family: 'Consolas', monospace;
-            font-size: 0.85rem;
-        }
-
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 6px;
-            font-size: 0.95rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .btn-primary {
-            background: var(--accent);
-            color: #000;
-        }
-
-        .btn-primary:hover {
-            background: #79c0ff;
-        }
-
-        .btn-success {
-            background: var(--success);
-            color: #000;
-        }
-
-        .btn-danger {
-            background: var(--danger);
-            color: #fff;
-        }
-
-        .btn-secondary {
-            background: var(--bg-input);
-            color: var(--text);
-            border: 1px solid var(--border);
-        }
-
-        .btn-group {
-            display: flex;
-            gap: 8px;
-            margin-top: 12px;
-        }
-
-        .status {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 0.8rem;
-            font-weight: 500;
-        }
-
-        .status-connected {
-            background: rgba(63, 185, 80, 0.2);
-            color: var(--success);
-        }
-
-        .orderbook-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 4px 8px;
-            border-bottom: 1px solid var(--border);
-            font-size: 0.85rem;
-            font-family: 'Consolas', monospace;
-        }
-
-        .orderbook-row:hover {
-            background: var(--bg-input);
-        }
-
-        .disabled-section {
-            opacity: 0.5;
-            pointer-events: none;
-        }
-
-        .status-disconnected {
-            background: rgba(248, 81, 73, 0.2);
-            color: var(--danger);
-        }
-
-        .status::before {
-            content: '';
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: currentColor;
-        }
-
-        .log-container {
-            background: var(--bg-input);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            height: 200px;
-            overflow-y: auto;
-            padding: 10px;
-            font-family: 'Consolas', monospace;
-            font-size: 0.8rem;
-        }
-
-        .log-entry {
-            padding: 4px 0;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .log-entry:last-child {
-            border-bottom: none;
-        }
-
-        .log-time {
-            color: var(--text-muted);
-        }
-
-        .log-type {
-            font-weight: 600;
-            margin: 0 6px;
-        }
-
-        .log-type.DEPTH { color: var(--accent); }
-        .log-type.FILL { color: var(--success); }
-        .log-type.ORDER_STATUS { color: var(--warning); }
-        .log-type.ERROR { color: var(--danger); }
-        .log-type.INFO { color: var(--text-muted); }
-
-        .orderbook-vertical {
-            display: flex;
-            flex-direction: column;
-            background: var(--bg-input);
-            border-radius: 8px;
+            grid-template-columns: 280px 1fr 320px; 
+            grid-template-rows: 1fr 300px; /* Increased bottom height for Automation */
+            gap: 1px;
+            background-color: var(--border);
             overflow: hidden;
         }
 
-        .orderbook-header {
-            display: grid;
-            grid-template-columns: 1fr 80px 80px;
-            padding: 8px 12px;
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            border-bottom: 1px solid var(--border);
-            font-weight: 600;
-        }
+        .panel { background-color: var(--bg-base); overflow: hidden; display: flex; flex-direction: column; }
+        .panel-header { height: 32px; min-height: 32px; display: flex; align-items: center; padding: 0 12px; background-color: var(--bg-panel); font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); border-bottom: 1px solid var(--border); }
 
-        .orderbook-row {
-            display: grid;
-            grid-template-columns: 1fr 80px 80px;
-            padding: 3px 12px;
-            font-size: 0.8rem;
-            font-family: 'Consolas', monospace;
-            position: relative;
-        }
+        /* Left Column */
+        .left-column { grid-column: 1; grid-row: 1 / span 2; display: flex; flex-direction: column; border-right: 1px solid var(--border); }
+        .orderbook-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+        
+        /* ... Orderbook CSS (Keep existing) ... */
+        .orderbook-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; font-family: 'Consolas', monospace; table-layout: fixed; }
+        .orderbook-table th { padding: 4px 8px; text-align: right; color: var(--text-secondary); font-weight: normal; }
+        .orderbook-table th:first-child { text-align: left; }
+        .orderbook-table td { padding: 2px 8px; text-align: right; position: relative; height: 20px; vertical-align: middle; z-index: 1; }
+        .orderbook-table td:first-child { text-align: left; }
+        .price-up { color: var(--buy); } .price-down { color: var(--sell); }
+        .bar-bg { position: absolute; top: 1px; bottom: 1px; opacity: 0.35; z-index: -1; pointer-events: none; }
+        .bar-ask { right: 0; background-color: var(--sell); } .bar-bid { left: 0; background-color: var(--buy); }
+        .spread-info { text-align: center; padding: 6px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); font-size: 0.95rem; font-weight: bold; background: var(--bg-panel); display: flex; justify-content: space-between; align-items: center; color: var(--text-secondary); }
 
-        .orderbook-row .bar {
-            position: absolute;
-            top: 0;
-            bottom: 0;
-            z-index: 0;
-        }
+        /* Admin Panel */
+        .admin-panel { flex: 1; border-top: 1px solid var(--border); display: flex; flex-direction: column; background: var(--bg-base); min-height: 0; }
+        .admin-log { flex: 1; overflow-y: auto; padding: 8px; font-family: 'Consolas', monospace; font-size: 0.7rem; color: #a0a0a0; white-space: pre-wrap; word-break: break-all; }
+        .log-entry { margin-bottom: 4px; border-bottom: 1px solid #21262d; padding-bottom: 4px; }
+        .log-entry.in { color: #58a6ff; } .log-entry.out { color: #7ee787; } .log-entry.err { color: #ff7b72; }
 
-        .orderbook-row .bar.ask {
-            right: 0;
-            background: rgba(248, 81, 73, 0.25);
-        }
+        /* Center Column */
+        .center-column { grid-column: 2; grid-row: 1; display: flex; flex-direction: column; border-right: 1px solid var(--border); min-height: 0; overflow: hidden; }
+        .chart-panel { flex: 2; position: relative; border-bottom: 1px solid var(--border); min-height: 0; overflow: hidden; }
+        #tvChartContainer { width: 100%; height: 100%; position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+        
+        .monitor-panel { flex: 1; display: flex; flex-direction: column; background: #000; overflow: hidden; min-height: 0; }
+        .monitor-header { display: flex; justify-content: space-between; padding: 4px 8px; background: #161b22; font-size: 0.75rem; color: #8b949e; border-bottom: 1px solid #30363d; }
+        .monitor-content { flex: 1; padding: 8px; overflow-y: auto; font-family: monospace; font-size: 0.7rem; color: #00ff00; }
+        .blink { animation: blinker 0.5s linear infinite; color: #fff; background: #238636; padding: 0 4px; border-radius: 2px; }
+        @keyframes blinker { 50% { opacity: 0; } }
 
-        .orderbook-row .bar.bid {
-            left: 0;
-            background: rgba(63, 185, 80, 0.25);
-        }
+        /* Right Column */
+        .orderform-panel { grid-column: 3; grid-row: 1 / span 2; border-left: 1px solid var(--border); }
+        /* ... Tabs/Form CSS ... */
+        .tabs { display: flex; background: var(--bg-panel); }
+        .tab-btn { flex: 1; padding: 10px; border: none; background: transparent; color: var(--text-secondary); cursor: pointer; border-bottom: 2px solid transparent; font-weight: 600; }
+        .tab-btn.active { color: var(--text-primary); border-bottom-color: var(--accent); background: #1c2128; }
+        .tab-btn.buy.active { color: var(--buy); border-bottom-color: var(--buy); }
+        .tab-btn.sell.active { color: var(--sell); border-bottom-color: var(--sell); }
+        .type-btn { flex: 1; padding: 6px; background: transparent; border: 1px solid var(--border); color: var(--text-secondary); cursor: pointer; border-radius: 4px; }
+        .type-btn.active { background: var(--accent); color: white; border-color: var(--accent); font-weight: bold; }
+        .form-section { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+        .input-group label { display: block; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 6px; }
+        .input-control { width: 100%; background: var(--bg-input); border: 1px solid #30363d; color: white; padding: 8px 10px; border-radius: 4px; font-family: monospace; }
+        .input-control:focus { outline: none; border-color: var(--text-secondary); }
+        .order-btn { width: 100%; padding: 12px; border-radius: 4px; border: none; font-weight: bold; cursor: pointer; color: white; font-size: 0.95rem; margin-top: 10px; }
+        .btn-buy { background-color: var(--buy); } .btn-buy:hover { background-color: #2ea043; }
+        .btn-sell { background-color: var(--sell); } .btn-sell:hover { background-color: #a02825; }
 
-        .orderbook-row span {
-            position: relative;
-            z-index: 1;
-        }
+        /* Bottom Panel */
+        .bottom-panel { grid-column: 2; grid-row: 2; border-top: 1px solid var(--border); display: flex; flex-direction: column; }
+        .bottom-tabs { display: flex; gap: 20px; padding: 0 16px; border-bottom: 1px solid var(--border); background: var(--bg-panel); }
+        .bottom-tab { padding: 8px 0; font-size: 0.85rem; cursor: pointer; color: var(--text-secondary); border-bottom: 2px solid transparent; }
+        .bottom-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+        
+        .panel-content { flex: 1; overflow: hidden; display: none; }
+        .panel-content.active { display: flex; flex-direction: column; }
+        
+        .automation-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px; overflow-y: auto; }
+        .auto-box { border: 1px solid var(--border); padding: 12px; border-radius: 4px; background: var(--bg-input); }
+        .auto-box h4 { margin-bottom: 12px; color: var(--accent); font-size: 0.9rem; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
 
-        .orderbook-row .price.ask { color: var(--danger); }
-        .orderbook-row .price.bid { color: var(--success); }
-        .orderbook-row .qty { text-align: right; }
-        .orderbook-row .total { text-align: right; color: var(--text-muted); }
+        /* Action Buttons */
+        .action-btn { padding: 2px 8px; border-radius: 3px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-secondary); cursor: pointer; font-size: 0.75rem; margin-right: 4px; }
+        .action-btn:hover { color: var(--text-primary); border-color: var(--text-secondary); }
+        .btn-cancel { color: var(--sell); border-color: rgba(218, 54, 51, 0.4); }
+        /* Status */
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background-color: #333; display: inline-block; margin-right: 6px; }
+        .connected { background-color: var(--buy); box-shadow: 0 0 5px var(--buy); }
+        .disconnected { background-color: var(--sell); }
 
-        .spread-row {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 10px;
-            background: var(--bg-card);
-            border-top: 1px solid var(--border);
-            border-bottom: 1px solid var(--border);
-            font-size: 0.85rem;
-            gap: 15px;
-        }
-
-        .spread-row .current-price {
-            font-weight: bold;
-            font-size: 1.1rem;
-        }
-
-        .side-toggle {
-            display: flex;
-            border-radius: 6px;
-            overflow: hidden;
-            border: 1px solid var(--border);
-        }
-
-        .side-toggle button {
-            flex: 1;
-            padding: 10px;
-            border: none;
-            background: var(--bg-input);
-            color: var(--text);
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .side-toggle button.active.buy {
-            background: var(--buy);
-            color: #000;
-        }
-
-        .side-toggle button.active.sell {
-            background: var(--sell);
-            color: #fff;
-        }
-
-        .inline-form {
-            display: flex;
-            gap: 8px;
-            align-items: flex-end;
-        }
-
-        .inline-form .form-group {
-            flex: 1;
-            margin-bottom: 0;
-        }
-
-        .response-box {
-            background: var(--bg-input);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            padding: 10px;
-            margin-top: 10px;
-            font-family: 'Consolas', monospace;
-            font-size: 0.8rem;
-            white-space: pre-wrap;
-            max-height: 150px;
-            overflow-y: auto;
-        }
-
-        .tabs {
-            display: flex;
-            gap: 4px;
-            margin-bottom: 15px;
-        }
-
-        .tab {
-            padding: 8px 16px;
-            background: var(--bg-input);
-            border: 1px solid var(--border);
-            border-radius: 6px 6px 0 0;
-            cursor: pointer;
-            font-size: 0.85rem;
-            color: var(--text-muted);
-            border-bottom: none;
-        }
-
-        .tab.active {
-            background: var(--bg-card);
-            color: var(--accent);
-            border-color: var(--accent);
-            border-bottom: 1px solid var(--bg-card);
-        }
+        /* Modal */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: none; justify-content: center; align-items: center; z-index: 1000; }
+        .modal { background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 400px; border: 1px solid var(--border); }
+        
+        /* Symbol Badge */
+        .symbol-badge { display: inline-block; padding: 4px 8px; margin: 2px; background: var(--buy); color: #fff; border-radius: 4px; font-size: 0.75rem; font-weight: bold; }
+        
+        /* API Config Section */
+        .api-config-section { padding: 8px; background: var(--bg-panel); border-bottom: 1px solid var(--border); }
+        .api-config-row { display: flex; gap: 4px; margin-bottom: 4px; align-items: center; }
+        .api-config-label { font-size: 0.7rem; color: var(--text-secondary); min-width: 60px; }
+        .api-config-input { flex: 1; background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary); padding: 3px 6px; border-radius: 3px; font-family: monospace; font-size: 0.7rem; }
+        
+        /* Monitor Split Layout */
+        .monitor-split { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+        .monitor-left { flex: 1; border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+        .monitor-right { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
     </style>
 </head>
-<!--
-=============================================================================
-[SECTION 2] HTML STRUCTURE
-- Left Panel: Orderbook, Order Form, Admin Controls
-- Right Panel: Chart, Realtime Ticker, Logs
-=============================================================================
--->
 <body>
-    <div class="container">
-        <header>
-            <h1>🚀 Supernoba API Test Console</h1>
-            <p>매칭 엔진 및 WebSocket API 테스트 도구</p>
-        </header>
+    <header>
+        <div class="header-row">
+            <a href="#" class="logo">SUPER<span>NOBA</span> <span style="font-size: 0.7rem; color: #666;">DEBUG_CLIENT</span></a>
+            <div style="flex: 1;"></div>
+            
+            <!-- Connection Controls -->
+            <div class="config-label">
+                WS Endpoint:
+                <input type="text" id="wsEndpoint" class="config-input" style="width: 500px;" value="wss://l2ptm85wub.execute-api.ap-northeast-2.amazonaws.com/production">
+            </div>
+            
+            <label class="config-label">
+                <input type="checkbox" id="chkTestMode" checked> Test Mode (Bypass JWT)
+            </label>
+            
+            <button id="btnConnect" class="action-btn" style="padding: 4px 12px; font-weight: bold;" onclick="toggleConnection()">Connect</button>
+            
+            <div id="connectionStatus" style="font-size: 0.8rem; display: flex; align-items: center; color: var(--text-secondary); margin-left: 10px;">
+                <span class="status-dot disconnected"></span> Disconnected
+            </div>
+        </div>
+    </header>
 
-        <div class="main-layout">
-            <!-- 왼쪽 패널: 호가창 + 주문 제출 -->
-            <div class="left-panel">
-                <!-- 세로 호가창 -->
-                <div class="card" style="padding: 12px;">
-                    <h2 style="margin-bottom: 8px; font-size: 0.95rem;">호가창</h2>
-                    <div id="orderbookTabs" class="tabs" style="margin-bottom: 8px; gap: 2px;">
-                        <div class="tab" style="color: var(--text-muted); padding: 4px 10px; font-size: 0.75rem;">구독된 심볼 없음</div>
-                    </div>
-                    <div class="orderbook-vertical">
-                        <div class="orderbook-header">
-                            <span>가격</span>
-                            <span style="text-align: right;">수량</span>
-                            <span style="text-align: right;">총액</span>
-                        </div>
-                        <div id="asksList"></div>
-                        <div class="spread-row">
-                            <span class="current-price" id="currentPriceDisplay">-</span>
-                            <span style="color: var(--text-muted); font-size: 0.75rem;">Spread: <span id="spreadDisplay">-</span></span>
-                        </div>
-                        <div id="bidsList"></div>
-                    </div>
+    <div class="grid-container">
+        <!-- [1] Left Column: Orderbook + Admin -->
+        <div class="left-column">
+            <!-- [1-Top] Orderbook -->
+            <div class="orderbook-panel">
+                <div class="panel-header">
+                    <span>Order Book</span>
+                    <span style="margin-left: auto; font-size: 0.75rem;" id="ob-symbol">TEST</span>
                 </div>
-
-                <!-- 주문 제출 (간소화) -->
-                <div class="card" style="padding: 12px;">
-                    <h2 style="margin-bottom: 8px; font-size: 0.95rem;">주문 제출</h2>
-                    <div class="form-group" style="margin-bottom: 8px;">
-                        <label style="font-size: 0.75rem;">심볼</label>
-                        <input type="text" id="orderSymbol" value="TEST" style="padding: 6px 8px; font-size: 0.85rem;">
-                    </div>
-                    <div class="side-toggle" style="margin-bottom: 8px;">
-                        <button class="buy active" onclick="setSide('BUY', this)">매수</button>
-                        <button class="sell" onclick="setSide('SELL', this)">매도</button>
-                    </div>
-                    <input type="hidden" id="orderSide" value="BUY">
-                    <div style="display: flex; gap: 6px; margin-bottom: 8px;">
-                        <div class="form-group" style="flex: 1; margin-bottom: 0;">
-                            <label style="font-size: 0.75rem;">가격</label>
-                            <input type="number" id="orderPrice" value="150" style="padding: 6px 8px; font-size: 0.85rem;">
-                        </div>
-                        <div class="form-group" style="flex: 1; margin-bottom: 0;">
-                            <label style="font-size: 0.75rem;">수량</label>
-                            <input type="number" id="orderQuantity" value="10" style="padding: 6px 8px; font-size: 0.85rem;">
-                        </div>
-                    </div>
-                    <input type="hidden" id="orderUserId" value="test-user-1">
-                    <input type="hidden" id="orderUserId" value="test-user-1">
-                    <!-- OrderEndpoint moved to Candle Test card -->
-                    <input type="hidden" id="apiKey" value="S0cLXAGtuza6T3GbYZ8TBbERqfdi5Xo1ilA914gf">
-                    <button class="btn btn-primary" style="width: 100%; padding: 8px;" onclick="submitOrder()">주문 제출</button>
-                    <div id="orderResponse" class="response-box" style="display: none; margin-top: 8px; font-size: 0.75rem;"></div>
+                <div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden;">
+                    <table class="orderbook-table"><tbody id="ob-asks"></tbody></table>
+                </div>
+                <div class="spread-info">
+                    <span id="ob-last-price" style="font-size: 1.1rem;">0.00</span>
+                    <span id="ob-spread" style="font-size: 0.8rem; color: var(--text-secondary);">Spread: -</span>
+                </div>
+                <div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-start; overflow: hidden;">
+                    <table class="orderbook-table"><tbody id="ob-bids"></tbody></table>
                 </div>
             </div>
 
-            <!-- 오른쪽 패널: 기타 카드들 -->
-            <div class="right-panel">
-                <!-- WebSocket 연결 -->
-                <div class="card">
-                    <h2>WebSocket 연결</h2>
-                    <div class="form-group">
-                        <label>WebSocket Endpoint</label>
-                        <input type="text" id="wsEndpoint" value="wss://l2ptm85wub.execute-api.ap-northeast-2.amazonaws.com/production/">
-                    </div>
-                    <div class="form-group">
-                        <label>User ID (로그인 시)</label>
-                        <input type="text" id="wsUserId" placeholder="anonymous" value="test-user-1">
-                    </div>
-                    <div class="form-group" style="margin-bottom: 8px;">
-                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                            <input type="checkbox" id="testModeEnabled" checked style="width: auto;">
-                            <span style="font-size: 0.85rem;">🧪 테스트 모드 (JWT 우회)</span>
-                        </label>
-                        <small style="color: var(--text-muted); font-size: 0.7rem;">체크 시 로그인 사용자로 인식 (100ms 폴링)</small>
-                    </div>
-                    <div class="btn-group">
-                        <button class="btn btn-success" onclick="connectWS()">연결</button>
-                        <button class="btn btn-danger" onclick="disconnectWS()">연결 해제</button>
-                        <span id="wsStatus" class="status status-disconnected">Disconnected</span>
-                    </div>
-                    <div id="connectionInfo" style="margin-top: 10px; padding: 10px; background: var(--bg-input); border-radius: 6px; font-size: 0.8rem; display: none;">
-                        <div><strong>연결 URL:</strong> <span id="connectedUrl">-</span></div>
-                        <div><strong>User ID:</strong> <span id="connectedUserId">-</span></div>
-                        <div><strong>테스트 모드:</strong> <span id="connectedTestMode">-</span></div>
-                        <div><strong>Valkey 키:</strong> <code style="background: var(--bg-dark); padding: 2px 6px; border-radius: 3px;" id="connectedValkeyKey">-</code></div>
-                        <div><strong>연결 시간:</strong> <span id="connectedTime">-</span></div>
-                    </div>
+            <!-- [1-Bottom] Admin Dashboard (Symbol Manager) -->
+            <div class="admin-panel">
+                <div class="panel-header" style="background: #2d1b2e; color: #ff80ff;">
+                     <span>🛠️ Symbol Manager (Admin)</span>
                 </div>
-
-                <!-- Main 구독 (호가창 - 1개만) -->
-                <div class="card">
-                    <h2 style="display: flex; justify-content: space-between; align-items: center;">Main 구독 <span style="background: var(--accent); color: #000; padding: 2px 8px; border-radius: 10px; font-size: 0.7rem;">1개</span></h2>
-                    <div class="form-group" style="margin-bottom: 8px;">
-                        <label style="font-size: 0.75rem;">Chart API Endpoint</label>
-                        <input type="text" id="chartApiEndpoint" value="https://4xs6g4w8l6.execute-api.ap-northeast-2.amazonaws.com/restV2/chart" style="font-size: 0.8rem; padding: 6px 8px;">
+                <div style="padding: 8px; border-bottom: 1px solid var(--border);">
+                    <!-- Symbol Actions -->
+                    <div style="display: flex; gap: 4px; margin-bottom: 4px;">
+                        <input type="text" id="newSymbol" class="config-input" style="flex: 1;" placeholder="Symbol (TEST)">
+                        <button class="action-btn" onclick="addSymbol()">+ Add</button>
+                        <button class="action-btn" onclick="removeSymbol()" style="color:red">- Del</button>
                     </div>
-                    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-                        <div class="form-group" style="flex: 2; margin-bottom: 0;">
-                            <label style="font-size: 0.75rem;">심볼 (호가창 + 차트)</label>
-                            <input type="text" id="mainSymbol" placeholder="TEST">
-                        </div>
-                    </div>
-                    <button class="btn btn-primary" style="width: 100%;" onclick="subscribeMain()">구독</button>
-                    <div id="mainSubscribedInfo" style="margin-top: 10px; color: var(--accent); font-size: 0.85rem;">
-                        호가창: 없음
-                    </div>
-                    <div id="chartLoadStatus" style="margin-top: 4px; font-size: 0.75rem; color: var(--text-muted);">
-                        📊 차트: 대기 중
-                    </div>
-                    
-                    <!-- 실시간 메시지 인디케이터 -->
-                    <div style="margin-top: 12px; background: var(--bg-input); padding: 10px; border-radius: 6px;">
-                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                            <span id="msgIndicator" style="width: 10px; height: 10px; border-radius: 50%; background: #333; transition: background 0.1s;"></span>
-                            <span style="font-size: 0.75rem; color: var(--text-muted);">실시간 데이터</span>
-                            <span id="msgPerSecond" style="font-size: 0.7rem; color: var(--accent); margin-left: auto;">0 msg/s</span>
-                        </div>
-                        <table style="width: 100%; font-size: 0.7rem; border-collapse: collapse;">
-                            <tr>
-                                <td style="padding: 3px; color: var(--text-muted); width: 60px;">유형</td>
-                                <td id="rtType" style="padding: 3px; font-weight: bold;">-</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 3px; color: var(--text-muted);">심볼</td>
-                                <td id="rtSymbol" style="padding: 3px;">-</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 3px; color: var(--text-muted);">최우선매수</td>
-                                <td id="rtBestBid" style="padding: 3px; color: var(--buy);">-</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 3px; color: var(--text-muted);">최우선매도</td>
-                                <td id="rtBestAsk" style="padding: 3px; color: var(--sell);">-</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 3px; color: var(--text-muted);">스프레드</td>
-                                <td id="rtSpread" style="padding: 3px;">-</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 3px; color: var(--text-muted);">시간</td>
-                                <td id="rtTime" style="padding: 3px;">-</td>
-                            </tr>
-                        </table>
-                    </div>
+                    <button class="action-btn" style="width: 100%; text-align: center; margin-bottom: 4px;" onclick="listSymbols()">종목 목록 조회 (Refresh List)</button>
+                    <div id="symbolList" style="font-size: 0.7rem; color: #888; overflow-x: auto; white-space: nowrap; padding: 4px; border: 1px solid #30363d; min-height: 28px; display: flex; flex-wrap: wrap; gap: 2px;">-</div>
                 </div>
-
-                <!-- Sub 구독 (전광판 - 무제한) -->
-                <div class="card">
-                    <h2 style="display: flex; justify-content: space-between; align-items: center;">Sub 구독 <span style="background: var(--purple); color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 0.7rem;">무제한</span></h2>
-                    <div class="inline-form">
-                        <div class="form-group">
-                            <label>심볼 (전광판 추가)</label>
-                            <input type="text" id="subSymbol" placeholder="AAPL">
-                        </div>
-                        <button class="btn" style="background: var(--purple); color: #fff;" onclick="subscribeSub()">+ 추가</button>
-                    </div>
-                    <div id="tickerGrid" style="margin-top: 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px;"></div>
+                <div id="adminLog" class="admin-log">
+                    <div class="log-entry">System ready.</div>
                 </div>
-
-            <!-- 종목 관리 -->
-            <div class="card" style="border-color: var(--success);">
-                <h2 style="color: var(--success);">📈 종목 관리</h2>
-                <div class="form-group" style="margin-bottom: 8px;">
-                    <label style="font-size: 0.75rem;">Symbol Manager Endpoint</label>
-                    <input type="text" id="symbolEndpoint" value="https://0eeto6kblk.execute-api.ap-northeast-2.amazonaws.com/admin/Supernoba-admin" style="padding: 6px 8px; font-size: 0.8rem;">
-                </div>
-                <div class="form-group" style="margin-bottom: 8px;">
-                    <label style="font-size: 0.75rem;">Admin API Key</label>
-                    <input type="password" id="adminApiKey" placeholder="관리자 전용" style="padding: 6px 8px; font-size: 0.8rem;">
-                </div>
-                
-                <div class="btn-group" style="margin-bottom: 12px;">
-                    <button class="btn btn-primary" onclick="listSymbols()">목록 조회</button>
-                </div>
-                
-                <div id="symbolList" style="background: var(--bg-input); padding: 10px; border-radius: 6px; margin-bottom: 12px; font-size: 0.8rem; min-height: 60px;">
-                    로딩...
-                </div>
-                
-                <div style="display: flex; gap: 8px;">
-                    <input type="text" id="newSymbol" placeholder="TEST" style="flex: 1; padding: 6px 8px; font-size: 0.85rem;">
-                    <button class="btn btn-success" onclick="addSymbol()">+ 추가</button>
-                    <button class="btn btn-danger" onclick="removeSymbol()">- 삭제</button>
-                </div>
-                
-                <div id="symbolResponse" class="response-box" style="display: none; margin-top: 8px; font-size: 0.75rem;"></div>
             </div>
+        </div>
 
-            <!-- 캔들 테스트 자동화 -->
-            <div class="card" style="border-color: var(--warning);">
-                <h2 style="color: var(--warning);">🕯️ 캔들 테스트 자동화</h2>
-                <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">
-                    가격 파동을 생성하여 1분/3분/5분 캔들 형성 테스트
-                </p>
-                
-                    <div class="form-group" style="margin-bottom: 12px;">
-                        <label style="font-size: 0.75rem;">Chart API URL</label>
-                        <input type="text" id="chartEndpoint" value="https://4xs6g4w8l6.execute-api.ap-northeast-2.amazonaws.com/restV2/chart" style="padding: 6px 8px;">
-                    </div>
-                    <div class="form-group" style="margin-bottom: 12px;">
-                        <label style="font-size: 0.75rem;">Order API URL</label>
-                        <input type="text" id="orderEndpoint" value="https://4xs6g4w8l6.execute-api.ap-northeast-2.amazonaws.com/restV2/orders" style="padding: 6px 8px;">
-                    </div>
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px;">
-                    <div class="form-group" style="margin: 0;">
-                        <label style="font-size: 0.75rem;">기준가</label>
-                        <input type="number" id="candleBasePrice" value="150" style="padding: 6px 8px;">
-                    </div>
-                    <div class="form-group" style="margin: 0;">
-                        <label style="font-size: 0.75rem;">파동 범위 (±)</label>
-                        <input type="number" id="candleRange" value="50" style="padding: 6px 8px;">
-                    </div>
-                    <div class="form-group" style="margin: 0;">
-                        <label style="font-size: 0.75rem;">파동 주기 (분)</label>
-                        <input type="number" id="candleWavePeriod" value="5" style="padding: 6px 8px;">
-                    </div>
-                    <div class="form-group" style="margin: 0;">
-                        <label style="font-size: 0.75rem;">주문 간격 (ms)</label>
-                        <input type="number" id="candleOrderInterval" value="500" style="padding: 6px 8px;">
-                    </div>
-                </div>
-                
-                <div style="background: var(--bg-input); padding: 10px; border-radius: 6px; margin-bottom: 12px; font-size: 0.75rem;">
-                    <div>📊 현재 상태: <span id="candleTestStatus" style="color: var(--text-muted);">대기</span></div>
-                    <div>📈 현재 가격: <span id="candleCurrentPrice">-</span></div>
-                    <div>⏱️ 실행 시간: <span id="candleElapsedTime">0:00</span></div>
-                    <div>📦 주문 수: <span id="candleOrderCount">0</span></div>
-                    <div>📍 다음 목표: <span id="candleNextTarget">-</span></div>
-                </div>
-                
-                <div class="btn-group">
-                    <button class="btn" style="background: var(--warning); color: #000; flex: 1;" onclick="startCandleTest()">▶ 시작</button>
-                    <button class="btn btn-danger" style="flex: 1;" onclick="stopCandleTest()">■ 중지</button>
-                </div>
-                
-                <div style="margin-top: 12px; padding: 10px; background: var(--bg-input); border-radius: 6px; font-size: 0.75rem;">
-                    <strong>파동 패턴:</strong><br>
-                    150 → 200 (고가) → 150 → 100 (저가) → 150 (5분 주기 반복)<br>
-                    각 1분봉마다 고/저/시/종 형성됨
+        <!-- [2] Center Column: Chart + Live Monitor -->
+        <div class="center-column">
+            <!-- [2-Top] Chart -->
+            <div class="chart-panel">
+                <div id="tvChartContainer"></div>
+                <!-- Timeframe selector -->
+                <div style="position: absolute; top: 12px; left: 12px; z-index: 20; display: flex; gap: 4px;">
+                    <button class="action-btn" onclick="setTimeframe('1m')">1m</button>
+                    <button class="action-btn" onclick="setTimeframe('3m')">3m</button>
+                    <button class="action-btn" onclick="setTimeframe('5m')">5m</button>
+                    <button class="action-btn" onclick="setTimeframe('15m')">15m</button>
+                    <button class="action-btn" onclick="setTimeframe('30m')">30m</button>
+                    <button class="action-btn" onclick="setTimeframe('1h')">1h</button>
                 </div>
             </div>
 
-            <!-- 실시간 차트 (TradingView Lightweight Charts) -->
-            <div class="card" style="border-color: var(--accent); grid-column: span 3;">
-                <h2 style="color: var(--accent); display: flex; justify-content: space-between; align-items: center;">
-                    📊 캔들스틱 차트
-                    <span id="chartSymbolDisplay" style="font-size: 0.8rem; color: var(--text-muted);">-</span>
-                </h2>
-                
-                <!-- 타임프레임 선택 버튼 -->
-                <div style="display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap;">
-                    <button class="tf-btn" data-tf="1m" onclick="selectTimeframe('1m')" style="padding: 6px 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--accent); color: #fff; cursor: pointer; font-weight: bold;">1분</button>
-                    <button class="tf-btn" data-tf="3m" onclick="selectTimeframe('3m')" style="padding: 6px 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text); cursor: pointer;">3분</button>
-                    <button class="tf-btn" data-tf="5m" onclick="selectTimeframe('5m')" style="padding: 6px 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text); cursor: pointer;">5분</button>
-                    <button class="tf-btn" data-tf="15m" onclick="selectTimeframe('15m')" style="padding: 6px 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text); cursor: pointer;">15분</button>
-                    <button class="tf-btn" data-tf="30m" onclick="selectTimeframe('30m')" style="padding: 6px 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text); cursor: pointer;">30분</button>
-                    <button class="tf-btn" data-tf="1h" onclick="selectTimeframe('1h')" style="padding: 6px 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text); cursor: pointer;">1시간</button>
-                    <button class="tf-btn" data-tf="4h" onclick="selectTimeframe('4h')" style="padding: 6px 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text); cursor: pointer;">4시간</button>
-                    <button class="tf-btn" data-tf="1d" onclick="selectTimeframe('1d')" style="padding: 6px 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text); cursor: pointer;">1일</button>
-                    <span id="tfLoadingIndicator" style="display: none; color: var(--accent); font-size: 0.8rem; margin-left: 10px;">⏳ 로딩...</span>
-                </div>
-                
-                <!-- 현재 캔들 정보 -->
-                <div style="display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap;">
-                    <div style="background: var(--bg-input); padding: 8px 12px; border-radius: 6px; flex: 1; min-width: 100px;">
-                        <div style="font-size: 0.7rem; color: var(--text-muted);">시가 (O)</div>
-                        <div id="chartOpen" style="font-size: 1rem; font-weight: bold;">-</div>
-                    </div>
-                    <div style="background: var(--bg-input); padding: 8px 12px; border-radius: 6px; flex: 1; min-width: 100px;">
-                        <div style="font-size: 0.7rem; color: var(--text-muted);">고가 (H)</div>
-                        <div id="chartHigh" style="font-size: 1rem; font-weight: bold; color: var(--buy);">-</div>
-                    </div>
-                    <div style="background: var(--bg-input); padding: 8px 12px; border-radius: 6px; flex: 1; min-width: 100px;">
-                        <div style="font-size: 0.7rem; color: var(--text-muted);">저가 (L)</div>
-                        <div id="chartLow" style="font-size: 1rem; font-weight: bold; color: var(--sell);">-</div>
-                    </div>
-                    <div style="background: var(--bg-input); padding: 8px 12px; border-radius: 6px; flex: 1; min-width: 100px;">
-                        <div style="font-size: 0.7rem; color: var(--text-muted);">종가 (C)</div>
-                        <div id="chartClose" style="font-size: 1rem; font-weight: bold;">-</div>
-                    </div>
-                    <div style="background: var(--bg-input); padding: 8px 12px; border-radius: 6px; flex: 1; min-width: 100px;">
-                        <div style="font-size: 0.7rem; color: var(--text-muted);">거래량</div>
-                        <div id="chartVolume" style="font-size: 1rem; font-weight: bold;">-</div>
+            <!-- [2-Bottom] Real-time Data Monitor (Split: API Config | Stream) -->
+            <div class="monitor-panel">
+                <div class="monitor-header">
+                    <span>📡 Data Stream Monitor</span>
+                    <div style="display: flex; gap: 8px;">
+                        <span id="indDepth" style="color: #666;">DEPTH ●</span>
+                        <span id="indCandle" style="color: #666;">CANDLE ●</span>
                     </div>
                 </div>
                 
-                <!-- 차트 + 캔들 테이블 영역 -->
-                <div style="display: flex; gap: 12px;">
-                    <!-- TradingView 차트 컨테이너 -->
-                    <div id="tvChartContainer" style="flex: 1; height: 300px; background: var(--bg-dark); border-radius: 8px;"></div>
-                    
-                    <!-- 실시간 캔들 데이터 -->
-                    <div style="width: 180px; background: var(--bg-dark); border-radius: 8px; padding: 12px;">
-                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
-                            <span id="candleIndicator" style="width: 10px; height: 10px; border-radius: 50%; background: #333;"></span>
-                            <span style="font-size: 0.75rem; font-weight: bold;">🕯️ 캔들</span>
-                        </div>
-                        <table style="width: 100%; font-size: 0.7rem; border-collapse: collapse;">
-                            <tr>
-                                <td style="padding: 4px; color: var(--text-muted);">시간</td>
-                                <td id="candleTime" style="padding: 4px; text-align: right;">-</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 4px; color: var(--text-muted);">시가</td>
-                                <td id="candleO" style="padding: 4px; text-align: right; font-weight: bold;">-</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 4px; color: var(--text-muted);">고가</td>
-                                <td id="candleH" style="padding: 4px; text-align: right; font-weight: bold; color: var(--buy);">-</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 4px; color: var(--text-muted);">저가</td>
-                                <td id="candleL" style="padding: 4px; text-align: right; font-weight: bold; color: var(--sell);">-</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 4px; color: var(--text-muted);">종가</td>
-                                <td id="candleC" style="padding: 4px; text-align: right; font-weight: bold;">-</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 4px; color: var(--text-muted);">거래량</td>
-                                <td id="candleV" style="padding: 4px; text-align: right;">-</td>
-                            </tr>
-                        </table>
-                    </div>
-                </div>
-                
-                <!-- 차트 정보 -->
-                <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 0.7rem; color: var(--text-muted);">
-                    <span>🕐 마지막 업데이트: <span id="chartLastUpdate">-</span></span>
-                    <span>📈 캔들 수: <span id="chartCandleTotal">0</span>개</span>
-                </div>
-                
-                <!-- RAW JSON 표시 영역 -->
-                <div style="margin-top: 12px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                        <span style="font-size: 0.75rem; font-weight: bold; color: var(--accent);">🔍 현재 캔들 RAW JSON</span>
-                        <span id="rawJsonTimestamp" style="font-size: 0.65rem; color: var(--text-muted);">-</span>
-                    </div>
-                    <pre id="rawCandleJson" style="background: #161b22; border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-size: 0.7rem; color: #79c0ff; overflow-x: auto; margin: 0; white-space: pre-wrap; word-break: break-all; max-height: 120px;">{ 등대 대기 중... }</pre>
-                </div>
-            </div>
-
-            <!-- 관리자 패널 (비밀번호 보호) -->
-            <div class="card" style="grid-column: span 2;">
-                <h2 style="display: flex; justify-content: space-between; align-items: center;">
-                    🔐 관리자 패널
-                    <span id="adminStatus" style="font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; background: var(--danger); color: #fff;">잠김</span>
-                </h2>
-                
-                <!-- API Key 입력 (잠김 상태) -->
-                <div id="adminLocked">
-                    <div style="display: flex; gap: 8px; align-items: flex-end;">
-                        <div class="form-group" style="flex: 1; margin-bottom: 0;">
-                            <label style="font-size: 0.75rem;">Admin API Key</label>
-                            <input type="password" id="adminPassword" placeholder="Lambda ADMIN_API_KEY 입력" style="padding: 8px;">
-                        </div>
-                        <button class="btn btn-primary" onclick="unlockAdmin()">인증</button>
-                    </div>
-                </div>
-                
-                <!-- 관리자 기능 (잠금 해제 상태) -->
-                <div id="adminUnlocked" style="display: none;">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                        <!-- 종목 조회 -->
-                        <div style="background: var(--bg-input); padding: 12px; border-radius: 6px;">
-                            <h3 style="font-size: 0.85rem; margin-bottom: 10px; color: var(--accent);">📊 DynamoDB 종목 조회</h3>
-                            <div style="display: flex; gap: 8px; margin-bottom: 10px;">
-                                <input type="text" id="querySymbol" placeholder="심볼 (예: TEST)" style="flex: 1; padding: 6px;">
-                                <select id="queryInterval" style="padding: 6px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
-                                    <option value="1m">1분</option>
-                                    <option value="5m">5분</option>
-                                    <option value="15m">15분</option>
-                                    <option value="1h">1시간</option>
-                                    <option value="1d">1일</option>
-                                </select>
-                                <button class="btn btn-secondary" onclick="queryDynamoDB()">조회</button>
+                <!-- Split Layout: Left = API Config, Right = Stream -->
+                <div class="monitor-split">
+                    <!-- LEFT: API Configuration -->
+                    <div class="monitor-left">
+                        <div class="api-config-section" style="flex: 1; overflow-y: auto;">
+                            <div style="font-size: 0.75rem; color: var(--accent); margin-bottom: 8px; font-weight: bold;">⚙️ API Configuration</div>
+                            
+                            <div class="api-config-row">
+                                <span class="api-config-label">Admin API</span>
+                                <input type="text" id="adminApiUrl" class="api-config-input" value="https://0eeto6kblk.execute-api.ap-northeast-2.amazonaws.com/admin/Supernoba-admin">
                             </div>
-                            <div id="queryResult" style="background: #161b22; padding: 8px; border-radius: 4px; font-size: 0.7rem; color: #79c0ff; max-height: 100px; overflow-y: auto;">
-                                조회 결과가 여기에 표시됩니다.
+                            
+                            <div class="api-config-row">
+                                <span class="api-config-label">Order API</span>
+                                <input type="text" id="orderApiUrl" class="api-config-input" value="https://4xs6g4w8l6.execute-api.ap-northeast-2.amazonaws.com/restV2/orders">
                             </div>
-                        </div>
-                        
-                        <!-- 데이터베이스 초기화 -->
-                        <div style="background: var(--bg-input); padding: 12px; border-radius: 6px;">
-                            <h3 style="font-size: 0.85rem; margin-bottom: 10px; color: var(--danger);">⚠️ 데이터베이스 초기화</h3>
-                            <p style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 10px;">
-                                DynamoDB candle_history 테이블과 S3 버킷의 모든 데이터를 삭제합니다.
-                                <br><strong style="color: var(--danger);">이 작업은 되돌릴 수 없습니다!</strong>
-                            </p>
-                            <div style="display: flex; gap: 8px; align-items: center;">
-                                <input type="text" id="resetConfirm" placeholder="DELETE 입력" style="flex: 1; padding: 6px;">
-                                <button class="btn btn-danger" onclick="resetDatabase()" style="background: var(--danger);">🗑️ 초기화</button>
+                            
+                            <div class="api-config-row">
+                                <span class="api-config-label">Chart API</span>
+                                <input type="text" id="chartApiUrl" class="api-config-input" value="https://4xs6g4w8l6.execute-api.ap-northeast-2.amazonaws.com/restV2/chart">
                             </div>
-                            <div id="resetStatus" style="margin-top: 8px; font-size: 0.7rem;"></div>
+                            
+                            <div class="api-config-row">
+                                <span class="api-config-label">API Key</span>
+                                <input type="password" id="restApiKey" class="api-config-input" value="S0cLXAGtuza6T3GbYZ8TBbERqfdi5Xo1ilA914gf">
+                            </div>
+                            
+                            <div style="margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px;">
+                                <div class="api-config-row">
+                                    <span class="api-config-label">Symbol</span>
+                                    <input type="text" id="subSymbol" class="api-config-input" style="flex: 0.5;" value="TEST">
+                                    <button class="action-btn" onclick="subscribeSymbol()">Subscribe</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     
-                    <div style="margin-top: 12px; text-align: right;">
-                        <button class="btn btn-secondary" onclick="lockAdmin()" style="font-size: 0.75rem;">🔒 잠금</button>
+                    <!-- RIGHT: Stream Monitor (Split into DEPTH | CANDLE) -->
+                    <div class="monitor-right">
+                        <div style="display: flex; flex: 1; overflow: hidden; min-height: 0;">
+                            <!-- DEPTH Console -->
+                            <div style="flex: 1; display: flex; flex-direction: column; border-right: 1px solid var(--border); overflow: hidden;">
+                                <div style="padding: 2px 6px; background: var(--sell); color: #fff; font-size: 0.65rem; font-weight: bold;">DEPTH</div>
+                                <div id="depthMonitor" class="monitor-content" style="flex: 1; overflow-y: auto;">
+                                </div>
+                            </div>
+                            <!-- CANDLE Console -->
+                            <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+                                <div style="padding: 2px 6px; background: var(--buy); color: #fff; font-size: 0.65rem; font-weight: bold;">CANDLE</div>
+                                <div id="candleMonitor" class="monitor-content" style="flex: 1; overflow-y: auto;">
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
+        </div>
 
-            <div class="card" style="grid-column: span 2;">
-                <h2>메시지 로그</h2>
-                <div class="btn-group" style="margin-bottom: 10px;">
-                    <button class="btn btn-secondary" onclick="clearLogs()">로그 지우기</button>
-                    <label style="display: flex; align-items: center; gap: 6px; margin-left: auto;">
-                        <input type="checkbox" id="autoScroll" checked> 자동 스크롤
+        <!-- [3] Order Form Panel -->
+        <div class="panel orderform-panel">
+            <div class="tabs">
+                <button class="tab-btn buy active" onclick="setSide('BUY')">매수 (Buy)</button>
+                <button class="tab-btn sell" onclick="setSide('SELL')">매도 (Sell)</button>
+            </div>
+            
+            <div class="form-section">
+                <!-- Order Type (Highlighted) -->
+                <div class="input-group">
+                    <label>주문 유형 (Type)</label>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="type-btn active" id="btnTypeLimit" onclick="setOrderType('LIMIT')">지정가 (Limit)</button>
+                        <button class="type-btn" id="btnTypeMarket" onclick="setOrderType('MARKET')">시장가 (Market)</button>
+                    </div>
+                </div>
+                
+                <div class="input-group">
+                    <label>가격 (Price)</label>
+                    <input type="number" id="inputPrice" class="input-control" value="100">
+                </div>
+
+                <div class="input-group">
+                    <label>수량 (Amount)</label>
+                    <input type="number" id="inputQty" class="input-control" value="1">
+                </div>
+
+                <div class="input-group">
+                    <label>주문 총액</label>
+                    <input type="text" id="inputTotal" class="input-control" readonly style="background: transparent; border: none; text-align: right; padding-right: 0;" value="0 KRW">
+                </div>
+
+                <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-secondary);">
+                    <span>가능 잔고</span>
+                    <span>-</span> 
+                </div>
+                
+                <!-- Order Conditions -->
+                <div style="display: flex; gap: 12px; margin-top: 8px; font-size: 0.75rem;">
+                    <label class="config-label" style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                        <input type="checkbox" id="chkAON"> AON (전량체결)
+                    </label>
+                    <label class="config-label" style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                        <input type="checkbox" id="chkIOC"> IOC (즉시체결/취소)
                     </label>
                 </div>
-                <div id="logContainer" class="log-container"></div>
+
+                <button id="btnOrder" class="order-btn btn-buy" onclick="submitOrder('ADD')">매수 주문</button>
+                
+                <!-- Update Actions -->
+                <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);">
+                    <div class="input-group">
+                        <label>Target Order ID (정정/취소)</label>
+                        <input type="text" id="targetOrderId" class="input-control" placeholder="클릭해서 선택">
+                    </div>
+                    <div style="display: flex; gap: 8px; margin-top: 8px;">
+                         <button class="action-btn" style="flex: 1;" onclick="submitOrder('REPLACE')">정정 (Replace)</button>
+                         <button class="action-btn" style="flex: 1; color: var(--sell); border-color: var(--sell);" onclick="submitOrder('CANCEL')">취소 (Cancel)</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- [4] Bottom Panel (Open Orders) -->
+        <div class="panel bottom-panel">
+            <div class="bottom-tabs">
+                <div class="bottom-tab active" onclick="setBottomTab('open')">미체결 주문 (Open Orders)</div>
+                <div class="bottom-tab" onclick="setBottomTab('history')">주문 내역 (History)</div>
+                <div class="bottom-tab" onclick="setBottomTab('balance')">자산 (Assets)</div>
+            </div>
+            <div class="order-list-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>시간</th>
+                            <th>종목</th>
+                            <th>유형</th>
+                            <th>방향</th>
+                            <th>가격</th>
+                            <th>주문수량</th>
+                            <th>체결수량</th>
+                            <th>상태</th>
+                            <th style="text-align: right;">관리</th>
+                        </tr>
+                    </thead>
+                    <tbody id="openOrdersTable">
+                        <!-- JS populated rows -->
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
 
+    <!-- Login Modal -->
+    <div id="loginModal" class="modal-overlay" style="display: flex;">
+        <div class="modal">
+            <h2 style="margin-bottom: 16px;">Debug Login</h2>
+            <div class="input-group" style="margin-bottom: 16px;">
+                <label>User ID</label>
+                <input type="text" id="loginUserId" class="input-control" value="test-user-1" onkeypress="if(event.key==='Enter') doLogin()">
+            </div>
+            <div class="input-group" style="margin-bottom: 16px;">
+                <label>Admin Key (for Admin API)</label>
+                <input type="password" id="loginAdminKey" class="input-control" placeholder="Enter Admin Key for symbol management" onkeypress="if(event.key==='Enter') doLogin()">
+            </div>
+            <button class="order-btn btn-primary" style="background: var(--accent);" onclick="doLogin()">접속하기</button>
+        </div>
+    </div>
+
     <script>
-        // =============================================================================
-        // [SECTION 3] JAVASCRIPT LOGIC
-        // =============================================================================
+        // --- State ---
+        let isLoggedIn = false;  // Login guard flag
         
-        // 1. GLOBAL CONFIGURATION
-        let ws = null;
-        let orderbooks = {};
-        let subscribedSymbols = [];
-        let activeOrderbookSymbol = null;
-        let heartbeatInterval = null;
+        const state = {
+            symbol: 'TEST',
+            userId: 'test-user-1',
+            adminKey: '',
+            side: 'BUY',
+            type: 'LIMIT', 
+            interval: '1m',
+            ws: null,
+            orders: [],
+            isConnected: false,
+            candleTestInterval: null
+        };
 
-        // WebSocket 연결
-        let connectedEndpoint = '';
-        let connectedUser = '';
-        let connectedTestMode = false;
-        
-        function connectWS() {
-            const endpoint = document.getElementById('wsEndpoint').value;
-            const userId = document.getElementById('wsUserId').value || 'anonymous';
-            const testMode = document.getElementById('testModeEnabled').checked;
-            
-            if (!endpoint) {
-                addLog('ERROR', 'WebSocket 엔드포인트를 입력하세요');
-                return;
-            }
+        // --- Init ---
+        window.addEventListener('DOMContentLoaded', () => {
+            initChart();
+            updateTotalDisplay();
+            // Add input listeners for total calculation
+            document.getElementById('inputPrice').addEventListener('input', updateTotalDisplay);
+            document.getElementById('inputQty').addEventListener('input', updateTotalDisplay);
+            adminLog('System Ready. Click [Connect] to start.', 'in');
+        });
 
-            // testMode가 체크되면 URL에 testMode=true 추가
-            const url = testMode 
-                ? `${endpoint}?userId=${userId}&testMode=true`
-                : `${endpoint}?userId=${userId}`;
-            
-            connectedEndpoint = endpoint;
-            connectedUser = userId;
-            connectedTestMode = testMode;
-            addLog('INFO', `연결 시도: ${url}`);
+        function updateTotalDisplay() {
+            const price = parseFloat(document.getElementById('inputPrice').value) || 0;
+            const qty = parseInt(document.getElementById('inputQty').value) || 0;
+            document.getElementById('inputTotal').value = (price * qty).toLocaleString() + ' KRW';
+        }
 
-            try {
-                ws = new WebSocket(url);
-
-                ws.onopen = () => {
-                    updateStatus(true);
-                    showConnectionInfo(endpoint, userId, testMode);
-                    addLog('INFO', testMode ? '✅ WebSocket 연결됨 (테스트 모드 - 100ms)' : '✅ WebSocket 연결됨 (익명 - 500ms)');
-                    
-                    // 30초 heartbeat 시작
-                    heartbeatInterval = setInterval(() => {
-                        if (ws && ws.readyState === WebSocket.OPEN) {
-                            ws.send(JSON.stringify({ action: 'ping' }));
-                        }
-                    }, 30000);
-                };
-
-                ws.onclose = () => {
-                    updateStatus(false);
-                    hideConnectionInfo();
-                    addLog('INFO', '❌ WebSocket 연결 해제됨');
-                    
-                    // heartbeat 정지
-                    if (heartbeatInterval) {
-                        clearInterval(heartbeatInterval);
-                        heartbeatInterval = null;
-                    }
-                };
-
-                ws.onerror = (error) => {
-                    addLog('ERROR', `WebSocket 에러: ${error.message || 'Unknown'}`);
-                };
-
-                ws.onmessage = (event) => {
-                    try {
-                        const msg = JSON.parse(event.data);
-                        handleMessage(msg);
-                    } catch (e) {
-                        addLog('INFO', `Raw: ${event.data}`);
-                    }
-                };
-            } catch (e) {
-                addLog('ERROR', `연결 실패: ${e.message}`);
+        function toggleConnection() {
+            if(state.isConnected) {
+                if(state.ws) state.ws.close();
+            } else {
+                connectWS();
             }
         }
 
-        function disconnectWS() {
-            if (heartbeatInterval) {
-                clearInterval(heartbeatInterval);
-                heartbeatInterval = null;
+        function doLogin() {
+            const uid = document.getElementById('loginUserId').value;
+            const adminKey = document.getElementById('loginAdminKey').value;
+            if(uid) state.userId = uid;
+            if(adminKey) state.adminKey = adminKey;
+            
+            isLoggedIn = true;  // Enable data loading
+            document.getElementById('loginModal').style.display = 'none';
+            
+            // Start loading data after login
+            connectWS();
+            fetchChartData(state.symbol);
+            adminLog('로그인 완료: ' + state.userId, 'in');
+        }
+
+        // --- Utility: Get Admin Key ---
+        function getAdminKey() {
+            return state.adminKey;
+        }
+
+        // --- Logging ---
+        function adminLog(msg, type = 'in') {
+            const el = document.getElementById('adminLog');
+            if(!el) return;
+            const div = document.createElement('div');
+            div.className = `log-entry ${type}`;
+            div.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            el.prepend(div);
+            // Limit log entries
+            while(el.children.length > 100) el.lastChild.remove();
+        }
+        const log = (msg) => adminLog(msg, 'in');
+
+        function logDepth(msg) {
+            const el = document.getElementById('depthMonitor');
+            if(!el) return;
+            const row = document.createElement('div');
+            row.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            el.prepend(row);
+            if(el.children.length > 30) el.lastChild.remove();
+        }
+
+        function logCandle(msg) {
+            const el = document.getElementById('candleMonitor');
+            if(!el) return;
+            const row = document.createElement('div');
+            row.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            el.prepend(row);
+            if(el.children.length > 30) el.lastChild.remove();
+        }
+
+        function flashIndicator(id) {
+            const el = document.getElementById(id);
+            if(el) {
+                el.style.color = '#0f0';
+                el.style.textShadow = '0 0 5px #0f0';
+                setTimeout(() => {
+                    el.style.color = '#666';
+                    el.style.textShadow = 'none';
+                }, 200);
             }
-            if (ws) {
-                ws.close();
-                ws = null;
+        }
+
+        // --- WebSocket ---
+        function connectWS() {
+            if(!isLoggedIn) {
+                adminLog('로그인 후 이용해주세요', 'err');
+                return;
             }
-            hideConnectionInfo();
-            subscribedSymbols = [];
-            activeOrderbookSymbol = null;
-            updateOrderbookTabs();
+            
+            let url = document.getElementById('wsEndpoint').value;
+            
+            // Add query parameters for authentication
+            const params = new URLSearchParams();
+            params.append('userId', state.userId);
+            
+            // Add testMode if checkbox is checked
+            const testMode = document.getElementById('chkTestMode')?.checked;
+            if(testMode) {
+                params.append('testMode', 'true');
+            }
+            
+            // Append params to URL
+            url = url + (url.includes('?') ? '&' : '?') + params.toString();
+            
+            adminLog(`Connecting to ${url.substring(0, 80)}...`, 'out');
+            
+            try {
+                state.ws = new WebSocket(url);
+            } catch(e) {
+                adminLog('WS Error: ' + e.message, 'err');
+                return;
+            }
+
+            state.ws.onopen = () => {
+                state.isConnected = true;
+                updateStatus(true);
+                adminLog('WS Connected', 'in');
+                
+                // Subscribe Main
+                const subSym = document.getElementById('subSymbol').value;
+                state.symbol = subSym;
+                state.ws.send(JSON.stringify({ action: 'subscribe', main: subSym }));
+            };
+
+            state.ws.onmessage = (event) => {
+                let msg;
+                try {
+                    msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+                } catch(e) {
+                    logMonitor(`Parse Error: ${e.message}`);
+                    return;
+                }
+                handleMessage(msg);
+            };
+
+            state.ws.onclose = () => {
+                state.isConnected = false;
+                updateStatus(false);
+                adminLog('WS Disconnected', 'err');
+            };
+            
+            state.ws.onerror = (err) => {
+                adminLog('WS Error occurred', 'err');
+            };
+        }
+
+        function subscribeSymbol() {
+            const sym = document.getElementById('subSymbol').value;
+            if(!sym) return;
+            state.symbol = sym;
+            document.getElementById('ob-symbol').innerText = sym;
+            
+            if(state.ws && state.isConnected) {
+                state.ws.send(JSON.stringify({ action: 'subscribe', main: sym }));
+                adminLog(`Subscribed to: ${sym}`, 'out');
+            }
+            fetchChartData(sym);
+        }
+
+        function handleMessage(msg) {
+            // Depth data format from backend:
+            // {"a":[],"b":[],"c":6.41,"e":"d","p":3638,"s":"TEST","t":1766197528304,"yc":-43.08}
+            
+            // Check for depth data (e === 'd' or has a/b arrays)
+            if(msg.e === 'd' || (msg.a !== undefined && msg.b !== undefined)) {
+                // This is depth data
+                const text = `${msg.s || state.symbol} A:${msg.a?.length || 0} B:${msg.b?.length || 0}`;
+                logDepth(text);
+                flashIndicator('indDepth');
+                renderOrderbook(msg);
+                return;
+            }
+            
+            // Candle data
+            if(msg.e === 'candle' || msg.type === 'candle') {
+                const text = `${msg.s || state.symbol} O:${msg.o} H:${msg.h} L:${msg.l} C:${msg.c}`;
+                logCandle(text);
+                flashIndicator('indCandle');
+                updateChartWithCandle(msg);
+                return;
+            }
+            
+            if(msg.e === 'candle_close' || msg.type === 'candle_close') {
+                const text = `CLOSE ${msg.s || state.symbol} O:${msg.o} C:${msg.c}`;
+                logCandle(text);
+                flashIndicator('indCandle');
+                updateChartWithCandle(msg, true);
+                return;
+            }
+            
+            // Order Status Update (Private)
+            if (msg.type === 'ORDER_STATUS') {
+                updateOrderLocally(msg.data);
+                adminLog(`Order Status: ${msg.data.status} #${msg.data.order_id}`, 'in');
+                return;
+            }
+            
+            // Fill Update (Private)
+            if (msg.type === 'FILL') {
+                handleFill(msg.data);
+                adminLog(`FILL: ${msg.data.filled_qty} @ ${msg.data.filled_price}`, 'in');
+                return;
+            }
+            
+            // Ping/pong or unknown
+            if(msg.type !== 'ping') {
+                logMonitor(`MSG: ${JSON.stringify(msg).substring(0, 60)}`);
+            }
         }
 
         function updateStatus(connected) {
-            const status = document.getElementById('wsStatus');
-            status.className = connected ? 'status status-connected' : 'status status-disconnected';
-            status.textContent = connected ? 'Connected' : 'Disconnected';
-        }
-        
-        function showConnectionInfo(endpoint, userId, testMode) {
-            const info = document.getElementById('connectionInfo');
-            info.style.display = 'block';
-            document.getElementById('connectedUrl').textContent = endpoint;
-            document.getElementById('connectedUserId').textContent = userId;
-            document.getElementById('connectedTestMode').textContent = testMode ? '✅ 활성 (100ms 폴링)' : '❌ 비활성 (500ms 폴링)';
-            document.getElementById('connectedValkeyKey').textContent = `user:${userId}:connections`;
-            document.getElementById('connectedTime').textContent = new Date().toLocaleString();
-        }
-        
-        function hideConnectionInfo() {
-            document.getElementById('connectionInfo').style.display = 'none';
-        }
-
-        // 메시지 처리
-        let lastCandleData = null;
-        let candleEventCount = 0;
-        let msgCount = 0;
-        let lastMsgCountReset = Date.now();
-        let indicatorTimeout = null;
-        
-        // 1초마다 msg/s 계산
-        setInterval(() => {
-            const elapsed = (Date.now() - lastMsgCountReset) / 1000;
-            const msgPerSec = Math.round(msgCount / elapsed);
-            document.getElementById('msgPerSecond').textContent = `${msgPerSec} msg/s`;
-            msgCount = 0;
-            lastMsgCountReset = Date.now();
-        }, 1000);
-        
-        function updateIndicator() {
-            const indicator = document.getElementById('msgIndicator');
-            indicator.style.background = '#3fb950';
-            // 1초 동안 데이터가 없으면 꺼짐
-            clearTimeout(indicatorTimeout);
-            indicatorTimeout = setTimeout(() => { indicator.style.background = '#333'; }, 1000);
-        }
-        
-        // 이전 값 유지를 위한 변수
-        let lastRtType = '-', lastRtSymbol = '-', lastRtBestBid = '-', lastRtBestAsk = '-';
-        
-        function updateRealtimeDisplay(type, symbol, bestBid, bestAsk) {
-            if (type) lastRtType = type;
-            if (symbol) lastRtSymbol = symbol;
-            if (bestBid && bestBid !== 0) lastRtBestBid = bestBid;
-            if (bestAsk && bestAsk !== 0) lastRtBestAsk = bestAsk;
+            const el = document.getElementById('connectionStatus');
+            const btn = document.getElementById('btnConnect');
             
-            document.getElementById('rtType').textContent = lastRtType;
-            document.getElementById('rtSymbol').textContent = lastRtSymbol;
-            document.getElementById('rtBestBid').textContent = lastRtBestBid;
-            document.getElementById('rtBestAsk').textContent = lastRtBestAsk;
-            document.getElementById('rtSpread').textContent = (lastRtBestBid !== '-' && lastRtBestAsk !== '-') 
-                ? (parseFloat(lastRtBestAsk) - parseFloat(lastRtBestBid)).toFixed(2) : '-';
-            document.getElementById('rtTime').textContent = new Date().toLocaleTimeString();
-        }
-        
-        function handleMessage(msg) {
-            msgCount++;
-            updateIndicator();
-            
-            // 컴팩트 포맷 처리 (e=event, s=symbol)
-            if (msg.e === 'd') {
-                // DEPTH 업데이트 - 로그에 표시하지 않음 (너무 많음)
-                const bestBid = msg.b?.[0]?.[0] || 0;
-                const bestAsk = msg.a?.[0]?.[0] || 0;
-                
-                updateOrderbook(msg.s, { asks: msg.a, bids: msg.b });
-                updateRealtimeDisplay('DEPTH', msg.s, bestBid, bestAsk);
-                
-                // Sub 전광판 업데이트 (depth에서 가격 추출)
-                if (subSymbols.has(msg.s)) {
-                    const midPrice = bestBid && bestAsk ? (bestBid + bestAsk) / 2 : bestBid || bestAsk;
-                    subSymbols.set(msg.s, {
-                        price: midPrice,
-                        change: msg.c || 0,
-                        yc: msg.yc || 0
-                    });
-                    renderTickerGrid();
-                }
-            } else if (msg.e === 'candle') {
-                // 실시간 캔들 업데이트 - 캔들 차트에만 표시 (Main 구독 테이블에서 제외)
-                candleEventCount++;
-                lastCandleData = msg;
-                ingestCandleMessage(msg);
-                updateCandleLogTable(msg);
-                // updateRealtimeDisplay 호출 제거 - 캔들은 Main 구독 표시에서 제외
-                
-            } else if (msg.e === 'candle_close') {
-                // 캔들 마감 알림
-                ingestCandleMessage(msg);
-                addClosedCandleToHistory(msg);
-                
-            } else if (msg.e === 't') {
-                // TICKER 업데이트 - 로그에 표시하지 않음
-                if (subSymbols.has(msg.s)) {
-                    subSymbols.set(msg.s, {
-                        price: msg.p,
-                        change: msg.c || 0,
-                        yc: msg.yc || 0
-                    });
-                    renderTickerGrid();
-                }
-            } else if (msg.type === 'DEPTH') {
-                // 레거시 포맷 호환 - 로그에 표시하지 않음
-                updateOrderbook(msg.symbol, msg.data);
-            } else if (msg.subscribed) {
-                addLog('SUCCESS', `✅ 구독 완료: ${msg.subscribed.join(', ')}`);
-            } else if (msg.message === 'Forbidden') {
-                // ping 응답 (무시)
-            } else if (msg.main || msg.sub) {
-                addLog('SUCCESS', `✅ main=${msg.main || '-'}, sub=${JSON.stringify(msg.sub || [])}`);
-            } else if (msg.e === 'order' || msg.type === 'order') {
-                // 주문 이벤트 - 로그에 표시
-                addLog('ORDER', JSON.stringify(msg));
-            } else if (msg.e === 'fill' || msg.type === 'fill') {
-                // 체결 이벤트 - 로그에 표시
-                addLog('FILL', JSON.stringify(msg));
+            if(connected) {
+                el.innerHTML = `<span class="status-dot connected"></span> Connected`;
+                btn.innerText = 'Disconnect';
+                btn.style.borderColor = 'var(--sell)';
+                btn.style.color = 'var(--sell)';
             } else {
-                // 기타 메시지는 무시
+                el.innerHTML = `<span class="status-dot disconnected"></span> Disconnected`;
+                btn.innerText = 'Connect';
+                btn.style.borderColor = 'var(--border)';
+                btn.style.color = 'var(--text-secondary)';
             }
         }
 
-        // 오더북 업데이트 (최적화)
-        function updateOrderbook(symbol, data) {
-            orderbooks[symbol] = data;
-            
-            // 활성 심볼인 경우에만 UI 상태 업데이트
-            if (symbol === activeOrderbookSymbol) {
-                uiState.orderbook = data;
-                uiState.orderbookDirty = true;
+        // --- Order Logic ---
+        function updateOrderLocally(orderData) {
+            const idx = state.orders.findIndex(o => o.order_id === orderData.order_id);
+            if (idx >= 0) {
+                if (orderData.status === 'CANCELLED' || orderData.status === 'REJECTED') {
+                    state.orders.splice(idx, 1);
+                } else {
+                    state.orders[idx] = { ...state.orders[idx], ...orderData };
+                }
+            } else {
+                if (orderData.status === 'ACCEPTED' || orderData.status === 'OPEN') {
+                    if(!orderData.filled_qty) orderData.filled_qty = 0;
+                    state.orders.unshift(orderData);
+                }
+            }
+            renderOpenOrders();
+        }
+
+        function handleFill(fillData) {
+            const idx = state.orders.findIndex(o => o.order_id === fillData.order_id);
+            if (idx >= 0) {
+                state.orders[idx].filled_qty = (state.orders[idx].filled_qty || 0) + fillData.filled_qty;
+                if (state.orders[idx].filled_qty >= state.orders[idx].quantity) state.orders.splice(idx, 1);
+                renderOpenOrders();
             }
         }
-        
 
+        async function submitOrder(action = 'ADD') {
+            const user_id = state.userId;
+            const url = document.getElementById('orderApiUrl').value;
 
-        function renderOrderbookOptimized() {
-            const data = uiState.orderbook;
-            if(!data || !domCache.asks || domCache.asks.length === 0) return;
-            
-            // 데이터 처리
-            const asksData = (data.asks || []).map(a => Array.isArray(a) ? {price: a[0], qty: a[1]} : {price: a.price, qty: a.quantity});
-            const bidsData = (data.bids || []).map(b => Array.isArray(b) ? {price: b[0], qty: b[1]} : {price: b.price, qty: b.quantity});
-            
-            // Min/Max 계산
-            const allQuantities = [...asksData.map(a => a.qty), ...bidsData.map(b => b.qty)].filter(q => q > 0);
-            const minQty = allQuantities.length > 0 ? Math.min(...allQuantities) : 0;
-            const maxQty = allQuantities.length > 0 ? Math.max(...allQuantities) : 1;
-            const qtyRange = maxQty - minQty || 1;
-            
-            const getBarWidth = (qty) => {
-                if (!qty || qty <= 0) return 0;
-                return Math.min(100, Math.max(5, ((qty - minQty) / qtyRange) * 100));
+            if(!url) {
+                adminLog('Order API URL is not configured', 'err');
+                return;
+            }
+
+            let payload = {
+                action: action,
+                user_id: user_id,
+                symbol: state.symbol,
+                side: state.side
             };
 
-            // 1. 현재가/스프레드
-            if (asksData.length > 0 && bidsData.length > 0) {
-                const bestAsk = asksData[0].price;
-                const bestBid = bidsData[0].price;
-                const midPrice = (bestAsk + bestBid) / 2;
-                const spread = bestAsk - bestBid;
-                const spreadPct = ((spread / midPrice) * 100).toFixed(2);
+            const targetOrderId = document.getElementById('targetOrderId').value;
+            const price = parseFloat(document.getElementById('inputPrice').value);
+            const qty = parseInt(document.getElementById('inputQty').value);
+
+            if (action === 'ADD') {
+                payload.type = state.type; 
+                payload.price = payload.type === 'MARKET' ? 0 : price;
+                payload.quantity = qty;
                 
-                if(domCache.currentPrice) domCache.currentPrice.innerHTML = `<span style="color: var(--accent);">${activeOrderbookSymbol}</span> ${midPrice.toFixed(2)}`;
-                if(domCache.spread) domCache.spread.innerHTML = `${spread.toFixed(2)} (${spreadPct}%)`;
-            }
-
-            // 2. Asks 렌더링 (역순)
-            const displayAsks = asksData.slice(0, 10).reverse();
-            // 빈 슬롯 채우기 (아래에서부터 채워짐)
-            // displayAsks: [102, 101, 100] (0, 1, 2)
-            // 화면: 102(위) -> 100(아래)
-            // DOM은 위에서부터 0번 인덱스.
-            // 따라서 10개의 슬롯 중, 데이터가 3개면 위쪽 7개는 비우고 아래 3개를 채워야 함?
-            // 기존 로직: while (asksRows.length < 10) asksRows.unshift(empty);
-            // 즉, 위쪽이 비고 아래쪽이 데이터.
-            
-            const emptyCount = 10 - displayAsks.length;
-            
-            for(let i=0; i<10; i++) {
-                const row = domCache.asks[i];
-                if (i < emptyCount) {
-                    // 빈 행
-                    row.price.textContent = '-';
-                    row.qty.textContent = '-';
-                    row.total.textContent = '-';
-                    row.bar.style.width = '0%';
-                } else {
-                    // 데이터 행
-                    const d = displayAsks[i - emptyCount];
-                    row.price.textContent = d.price.toFixed(2);
-                    row.qty.textContent = d.qty;
-                    row.total.textContent = (d.price * d.qty).toLocaleString();
-                    row.bar.style.width = `${getBarWidth(d.qty)}%`;
+                // Order Conditions (AON, IOC)
+                const aon = document.getElementById('chkAON')?.checked;
+                const ioc = document.getElementById('chkIOC')?.checked;
+                if(aon || ioc) {
+                    payload.conditions = {
+                        all_or_none: aon || false,
+                        immediate_or_cancel: ioc || false
+                    };
                 }
+            } else if (action === 'REPLACE') {
+                if(!targetOrderId) { alert('Select order to replace'); return; }
+                payload.order_id = targetOrderId;
+                payload.price = price;
+                const deltaStr = prompt("Qty Delta:", "0");
+                if(deltaStr === null) return;
+                payload.qty_delta = parseInt(deltaStr);
+            } else if (action === 'CANCEL') {
+                 if(!targetOrderId) { alert('Select order to cancel'); return; }
+                 payload.order_id = targetOrderId;
             }
 
-            // 3. Bids 렌더링 (정순)
-            const displayBids = bidsData.slice(0, 10);
-            for(let i=0; i<10; i++) {
-                const row = domCache.bids[i];
-                if (i < displayBids.length) {
-                    const d = displayBids[i];
-                    row.price.textContent = d.price.toFixed(2);
-                    row.qty.textContent = d.qty;
-                    row.total.textContent = (d.price * d.qty).toLocaleString();
-                    row.bar.style.width = `${getBarWidth(d.qty)}%`;
-                } else {
-                    row.price.textContent = '-';
-                    row.qty.textContent = '-';
-                    row.total.textContent = '-';
-                    row.bar.style.width = '0%';
-                }
-            }
-        }
-
-        function selectOrderbookSymbol(symbol) {
-            activeOrderbookSymbol = symbol;
-            updateOrderbookTabs();
-            if (orderbooks[symbol]) {
-                // UI State 업데이트 (Render Loop가 처리)
-                uiState.orderbook = orderbooks[symbol];
-                uiState.orderbookDirty = true;
-            }
-        }
-        
-        function updateOrderbookTabs() {
-            const tabsEl = document.getElementById('orderbookTabs');
-            if (subscribedSymbols.length === 0) {
-                tabsEl.innerHTML = '<div class="tab" style="color: var(--text-muted);">구독된 심볼 없음</div>';
-                return;
-            }
-            
-            tabsEl.innerHTML = subscribedSymbols.map(sym => 
-                `<div class="tab ${sym === activeOrderbookSymbol ? 'active' : ''}" onclick="selectOrderbookSymbol('${sym}')">${sym}</div>`
-            ).join('');
-        }
-
-        // 심볼 구독
-        function subscribe() {
-            if (!ws || ws.readyState !== WebSocket.OPEN) {
-                addLog('ERROR', 'WebSocket이 연결되지 않음');
-                return;
-            }
-
-            // 기존 symbols 형식으로 호환성 유지
-            const symbols = document.getElementById('mainSymbol').value.split(',').map(s => s.trim().toUpperCase()).filter(s => s);
-            if (symbols.length === 0) return;
-            
-            ws.send(JSON.stringify({ action: 'subscribe', symbols }));
-            addLog('INFO', `구독 요청: ${symbols.join(', ')}`);
-            
-            symbols.forEach(sym => {
-                if (!subscribedSymbols.includes(sym)) {
-                    subscribedSymbols.push(sym);
-                }
-            });
-            
-            if (!activeOrderbookSymbol && subscribedSymbols.length > 0) {
-                activeOrderbookSymbol = subscribedSymbols[0];
-            }
-            
-            updateOrderbookTabs();
-        }
-        
-        // Main 구독 (호가창 - 1개만)
-        let currentMainSymbol = null;
-        let subSymbols = new Map(); // symbol -> {price, change}
-        
-        function subscribeMain() {
-            if (!ws || ws.readyState !== WebSocket.OPEN) {
-                addLog('ERROR', 'WebSocket이 연결되지 않음');
-                return;
-            }
-            
-            const symbol = document.getElementById('mainSymbol').value.toUpperCase().trim();
-            if (!symbol) {
-                addLog('ERROR', '심볼을 입력하세요');
-                return;
-            }
-            
-            // 신버전 형식으로 Main 구독
-            ws.send(JSON.stringify({ action: 'subscribe', main: symbol }));
-            currentMainSymbol = symbol;
-            
-            // 기존 호가창 초기화 - Main은 1개만!
-            subscribedSymbols = [symbol];
-            orderbooks = {};
-            activeOrderbookSymbol = symbol;
-            updateOrderbookTabs();
-            
-            // 캔들 분석 버퍼 초기화 (중요: 이전 심볼 데이터 제거)
-            oneMinCandleBuffer = [];
-            
-            document.getElementById('mainSubscribedInfo').innerHTML = `호가창: <strong style="color: var(--accent);">${symbol}</strong>`;
-            document.getElementById('mainSymbol').value = '';
-            addLog('INFO', `[MAIN] 구독: ${symbol}`);
-            
-            // ✅ 차트 히스토리 로드 (Chart API에서 과거 데이터 가져오기)
-            // 전역 심볼 업데이트 및 타임프레임 로드 함수 사용 (일관성 유지)
-            chartSymbol = symbol;
-            
-            // 차트 초기화 보장 (필수)
-            initTradingViewChart();
-
-            // 타임프레임은 전역 변수나 기본값 사용 (UI 선택 제거됨)
-            selectTimeframe(selectedTimeframe || '1m');
-        }
-        
-
-        
-        // Sub 구독 (전광판 - 무제한)
-        function subscribeSub() {
-            if (!ws || ws.readyState !== WebSocket.OPEN) {
-                addLog('ERROR', 'WebSocket이 연결되지 않음');
-                return;
-            }
-            
-            const symbol = document.getElementById('subSymbol').value.toUpperCase().trim();
-            if (!symbol) {
-                addLog('ERROR', '심볼을 입력하세요');
-                return;
-            }
-            if (subSymbols.has(symbol)) {
-                addLog('ERROR', '이미 추가된 심볼입니다');
-                return;
-            }
-            
-            // 신버전 형식으로 Sub 구독
-            ws.send(JSON.stringify({ action: 'subscribe', sub: [symbol] }));
-            subSymbols.set(symbol, { price: 0, change: 0 });
-            
-            document.getElementById('subSymbol').value = '';
-            renderTickerGrid();
-            addLog('INFO', `[SUB] 추가: ${symbol}`);
-        }
-        
-        function removeSub(symbol) {
-            subSymbols.delete(symbol);
-            renderTickerGrid();
-            addLog('INFO', `[SUB] 제거: ${symbol}`);
-        }
-        
-        function renderTickerGrid() {
-            const grid = document.getElementById('tickerGrid');
-            if (subSymbols.size === 0) {
-                grid.innerHTML = '<div style="color: var(--text-muted); grid-column: 1/-1; text-align: center; padding: 20px;">심볼을 추가하세요</div>';
-                return;
-            }
-            
-            grid.innerHTML = Array.from(subSymbols.entries()).map(([symbol, data]) => {
-                const isUp = (data.change || 0) >= 0;
-                const sign = isUp ? '+' : '';
-                const changeColor = isUp ? 'var(--success)' : 'var(--danger)';
-                return `
-                    <div style="background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px; padding: 12px; position: relative;">
-                        <button onclick="removeSub('${symbol}')" style="position: absolute; top: 4px; right: 8px; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.1rem;">&times;</button>
-                        <div style="font-weight: bold; color: var(--purple); margin-bottom: 6px;">${symbol}</div>
-                        <div style="font-size: 1.1rem; font-weight: bold;">${data.price ? data.price.toLocaleString() : '-'}</div>
-                        <div style="font-size: 0.8rem; color: ${changeColor};">${sign}${(data.change || 0).toFixed(2)}%</div>
-                    </div>
-                `;
-            }).join('');
-        }
-
-        // 주문 제출
-        async function submitOrder() {
-            const endpoint = document.getElementById('orderEndpoint').value;
-            if (!endpoint) {
-                addLog('ERROR', 'Order API 엔드포인트를 입력하세요');
-                return;
-            }
-
-            const order = {
-                user_id: document.getElementById('orderUserId').value,
-                symbol: document.getElementById('orderSymbol').value,
-                side: document.getElementById('orderSide').value,
-                price: parseFloat(document.getElementById('orderPrice').value),
-                quantity: parseInt(document.getElementById('orderQuantity').value),
-                order_type: 'LIMIT'
-            };
-
-            addLog('INFO', `주문 제출: ${JSON.stringify(order)}`);
-
+            adminLog(`Sending ${action}...`, 'out');
             try {
-                const apiKey = document.getElementById('apiKey').value;
-                const response = await fetch(endpoint, {
+                const headers = { 'Content-Type': 'application/json' };
+                const apiKey = document.getElementById('restApiKey').value;
+                if(apiKey) headers['x-api-key'] = apiKey;
+                
+                const res = await fetch(url, {
                     method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'x-api-key': apiKey
-                    },
-                    body: JSON.stringify(order)
-                });
-
-                const result = await response.json();
-                document.getElementById('orderResponse').style.display = 'block';
-                document.getElementById('orderResponse').textContent = JSON.stringify(result, null, 2);
-                addLog('INFO', `주문 응답: ${JSON.stringify(result)}`);
-            } catch (e) {
-                addLog('ERROR', `주문 실패: ${e.message}`);
-            }
-        }
-
-        function setSide(side, btn) {
-            document.getElementById('orderSide').value = side;
-            document.querySelectorAll('.side-toggle button').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-        }
-
-        // Admin API
-        let currentAdminAction = 'listTopics';
-
-        function setAdminAction(action, tab) {
-            currentAdminAction = action;
-            document.getElementById('adminAction').value = action;
-            document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-
-            document.getElementById('adminCreateFields').style.display = 
-                (action === 'createTopic' || action === 'describeTopic') ? 'block' : 'none';
-        }
-
-        async function callAdmin() {
-            const endpoint = document.getElementById('adminEndpoint').value;
-            if (!endpoint) {
-                addLog('ERROR', 'Admin API 엔드포인트를 입력하세요');
-                return;
-            }
-
-            const payload = {
-                action: currentAdminAction,
-                topic: document.getElementById('adminTopic').value,
-                partitions: parseInt(document.getElementById('adminPartitions').value)
-            };
-
-            addLog('INFO', `Admin 호출: ${JSON.stringify(payload)}`);
-
-            try {
-                const response = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: headers,
                     body: JSON.stringify(payload)
                 });
-
-                const result = await response.json();
-                document.getElementById('adminResponse').style.display = 'block';
-                document.getElementById('adminResponse').textContent = JSON.stringify(result, null, 2);
-                addLog('INFO', `Admin 응답: ${JSON.stringify(result)}`);
-            } catch (e) {
-                addLog('ERROR', `Admin 호출 실패: ${e.message}`);
-            }
-        }
-
-        // 로그
-        function addLog(type, message) {
-            console.log(`[VER 2.1 FIXED] ${type}: ${message}`); // Version Tag
-            const container = document.getElementById('logContainer');
-            const time = new Date().toLocaleTimeString();
-            const entry = document.createElement('div');
-            entry.className = 'log-entry';
-            entry.innerHTML = `<span class="log-time">${time}</span><span class="log-type ${type}">[${type}]</span><span>${message}</span>`;
-            container.appendChild(entry);
-
-            if (document.getElementById('autoScroll').checked) {
-                container.scrollTop = container.scrollHeight;
-            }
-        }
-
-        function clearLogs() {
-            document.getElementById('logContainer').innerHTML = '';
-        }
-
-        // ======== 종목 관리 ========
-        async function listSymbols() {
-            const endpoint = document.getElementById('symbolEndpoint').value;
-            document.getElementById('symbolList').textContent = '로딩...';
-            
-            try {
-                const response = await fetch(endpoint, { method: 'GET' });
-                const result = await response.json();
-                
-                if (result.symbols && result.symbols.length > 0) {
-                    document.getElementById('symbolList').innerHTML = 
-                        result.symbols.map(s => `<span style="background: var(--success); color: #000; padding: 2px 8px; border-radius: 4px; margin: 2px; display: inline-block;">${s}</span>`).join('');
+                const result = await res.json();
+                if(res.ok) {
+                    adminLog(`${action} OK: ${result.order_id || result.message || 'success'}`, 'in');
                 } else {
-                    document.getElementById('symbolList').textContent = '등록된 종목이 없습니다';
-                }
-                addLog('INFO', `종목 목록: ${result.symbols?.join(', ') || '없음'}`);
-            } catch (e) {
-                document.getElementById('symbolList').textContent = '조회 실패: ' + e.message;
-                addLog('ERROR', `종목 조회 실패: ${e.message}`);
-            }
-        }
-        
-        async function addSymbol() {
-            const endpoint = document.getElementById('symbolEndpoint').value;
-            const apiKey = document.getElementById('adminApiKey').value;
-            const symbol = document.getElementById('newSymbol').value.toUpperCase();
-            
-            if (!symbol) {
-                addLog('ERROR', '종목 코드를 입력하세요');
-                return;
-            }
-            
-            try {
-                const response = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Authorization': apiKey
-                    },
-                    body: JSON.stringify({ symbol })
-                });
-                
-                const result = await response.json();
-                document.getElementById('symbolResponse').style.display = 'block';
-                document.getElementById('symbolResponse').textContent = JSON.stringify(result, null, 2);
-                addLog('INFO', `종목 추가: ${JSON.stringify(result)}`);
-                
-                // 목록 새로고침
-                listSymbols();
-            } catch (e) {
-                addLog('ERROR', `종목 추가 실패: ${e.message}`);
-            }
-        }
-        
-        async function removeSymbol() {
-            const endpoint = document.getElementById('symbolEndpoint').value;
-            const apiKey = document.getElementById('adminApiKey').value;
-            const symbol = document.getElementById('newSymbol').value.toUpperCase();
-            
-            if (!symbol) {
-                addLog('ERROR', '종목 코드를 입력하세요');
-                return;
-            }
-            
-            try {
-                const response = await fetch(`${endpoint}/${symbol}`, {
-                    method: 'DELETE',
-                    headers: { 'Authorization': apiKey }
-                });
-                
-                const result = await response.json();
-                document.getElementById('symbolResponse').style.display = 'block';
-                document.getElementById('symbolResponse').textContent = JSON.stringify(result, null, 2);
-                addLog('INFO', `종목 삭제: ${JSON.stringify(result)}`);
-                
-                // 목록 새로고침
-                listSymbols();
-            } catch (e) {
-                addLog('ERROR', `종목 삭제 실패: ${e.message}`);
-            }
-        }
-
-        // ======== 캔들 테스트 자동화 ========
-        let candleTestInterval = null;
-        let candleTestStartTime = null;
-        let candleOrderCount = 0;
-        let candleCurrentPrice = 150;
-        let candleDirection = 1; // 1 = 상승, -1 = 하락
-        let candlePhase = 0; // 0-3: 기준→고가, 고가→기준, 기준→저가, 저가→기준
-        let candlePhaseStep = 0;
-        
-        function startCandleTest() {
-            console.log('startCandleTest called');
-            
-            if (candleTestInterval) {
-                addLog('ERROR', '이미 실행 중입니다');
-                return;
-            }
-            
-            try {
-                const basePrice = parseFloat(document.getElementById('candleBasePrice').value) || 150;
-                const range = parseFloat(document.getElementById('candleRange').value) || 50;
-                const wavePeriod = parseFloat(document.getElementById('candleWavePeriod').value) || 5;
-                const orderInterval = parseInt(document.getElementById('candleOrderInterval').value) || 500;
-                
-                console.log('Config:', { basePrice, range, wavePeriod, orderInterval });
-                
-                // 1분에 몇 번 주문하는지 계산
-                const ordersPerMinute = 60000 / orderInterval;
-                // 한 파동(5분)에 필요한 총 주문 수
-                const ordersPerWave = ordersPerMinute * wavePeriod;
-                // 가격 변화 단계
-                const priceStepPerOrder = (range * 4) / ordersPerWave;
-                
-                candleCurrentPrice = basePrice;
-                candleOrderCount = 0;
-                candlePhase = 0;
-                candlePhaseStep = 0;
-                candleTestStartTime = Date.now();
-                
-                document.getElementById('candleTestStatus').textContent = '실행 중';
-                document.getElementById('candleTestStatus').style.color = 'var(--success)';
-                
-                addLog('INFO', `캔들 테스트 시작: 기준=${basePrice}, 범위=±${range}, 주기=${wavePeriod}분`);
-                
-                // 타이머 시작
-                const elapsedTimer = setInterval(() => {
-                    if (!candleTestInterval) {
-                        clearInterval(elapsedTimer);
-                        return;
-                    }
-                    const elapsed = Math.floor((Date.now() - candleTestStartTime) / 1000);
-                    const min = Math.floor(elapsed / 60);
-                    const sec = elapsed % 60;
-                    document.getElementById('candleElapsedTime').textContent = `${min}:${sec.toString().padStart(2, '0')}`;
-                }, 1000);
-                
-                // 주문 반복 (Catch-up 로직 적용)
-                let lastRunTime = Date.now();
-                candleTestInterval = setInterval(async () => {
-                    const now = Date.now();
-                    const delta = now - lastRunTime;
-                    
-                    // 목표 간격보다 지연된 경우 (백그라운드 스로틀링 등)
-                    // 놓친 횟수만큼 "밀린 주문"을 한 번에 처리하여 데이터 밀도 유지
-                    // 예: 1초(1000ms) 지연, 목표 100ms -> 10번 실행
-                    let ticks = Math.floor(delta / orderInterval);
-                    if (ticks < 1) ticks = 1; // 최소 1번은 실행
-                    if (ticks > 50) ticks = 50; // 과부하 방지 (최대 50개 제한)
-
-                    lastRunTime = now;
-
-                    for (let i = 0; i < ticks; i++) {
-                        // 각 틱마다 시간(t)를 조금씩 흐르게 함 -> 가격 변동 발생 -> 캔들 몸통 생성
-                        await submitCandleTestOrder(basePrice, range, wavePeriod, ordersPerMinute);
-                        
-                        // 너무 빨리 쏘면 브라우저가 힘들어하므로 10ms 쉬어주기 (틱이 많을 때만)
-                        if (ticks > 5) await new Promise(r => setTimeout(r, 2)); 
-                    }
-                    
-                    // 스로틀링 경고는 유지 (사용자 알림용)
-                    if (delta > 1000 && !document.hidden && !document.getElementById('throttleWarning')) {
-                        // (경고창 로직 생략 또는 간단히 유지)
-                    }
-                }, orderInterval);
-                
-                console.log('Candle test started successfully');
-            } catch (e) {
-                console.error('startCandleTest error:', e);
-                addLog('ERROR', `캔들 테스트 시작 실패: ${e.message}`);
-            }
-        }
-        
-        async function submitCandleTestOrder(basePrice, range, wavePeriod, ordersPerMinute) {
-            // 시간(t) 증가 (여기서 해야 Catch-up 루프 내에서 가격이 변함)
-            t += 0.01;
-            
-            // 파동 계산 (사인파 형태)
-            // const totalSeconds = (Date.now() - candleTestStartTime) / 1000; (삭제: t 기반으로 변경)
-            
-            // 사인파: 0→1(고점)→0→-1(저점)→0
-            const sineValue = Math.sin(t * 2 * Math.PI);
-            candleCurrentPrice = Math.round(basePrice + (range * sineValue));
-            
-            // 다음 목표 계산
-            let nextTarget = '';
-            if (t < 0.25) nextTarget = `↗ 고가 (${basePrice + range})`;
-            else if (t < 0.5) nextTarget = `↘ 기준 (${basePrice})`;
-            else if (t < 0.75) nextTarget = `↙ 저가 (${basePrice - range})`;
-            else nextTarget = `↗ 기준 (${basePrice})`;
-            
-            document.getElementById('candleCurrentPrice').textContent = candleCurrentPrice;
-            document.getElementById('candleNextTarget').textContent = nextTarget;
-            
-            const endpoint = document.getElementById('orderEndpoint').value;
-            const apiKey = document.getElementById('apiKey').value;
-            const symbol = document.getElementById('orderSymbol').value || 'TEST';
-            
-            try {
-                // 현실적인 거래량 시뮬레이션: 주문 수량 랜덤화 (1 ~ 50주)
-                // 실제 주식 시장: 거래량(Volume) = 체결된 주식 수(Quantity)의 합
-                const randomQty = Math.floor(Math.random() * 50) + 1;
-
-                // 체결용 매수+매도만 제출 (호가창은 이미 있다고 가정)
-                const buyOrder = {
-                    user_id: 'candle-test-buyer',
-                    symbol: symbol,
-                    side: 'BUY',
-                    price: candleCurrentPrice,
-                    quantity: randomQty,
-                    order_type: 'LIMIT'
-                };
-                const sellOrder = {
-                    user_id: 'candle-test-seller',
-                    symbol: symbol,
-                    side: 'SELL',
-                    price: candleCurrentPrice,
-                    quantity: randomQty,
-                    order_type: 'LIMIT'
-                };
-                
-                // 병렬로 2개 주문 제출 (순차가 아닌 동시 처리)
-                const responses = await Promise.all([
-                    fetch(endpoint, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-                        body: JSON.stringify(buyOrder)
-                    }),
-                    fetch(endpoint, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-                        body: JSON.stringify(sellOrder)
-                    })
-                ]);
-                
-                // 응답 상태 확인
-                const errors = [];
-                for (const res of responses) {
-                    if (!res.ok) {
-                        const text = await res.text();
-                        errors.push(`${res.status} ${res.statusText}: ${text}`);
-                    }
-                }
-                
-                if (errors.length > 0) {
-                    addLog('ERROR', `주문 실패: ${errors.join(', ')}`);
-                }
-                
-                candleOrderCount += 2;
-                document.getElementById('candleOrderCount').textContent = candleOrderCount;
-                
-            } catch (e) {
-                addLog('ERROR', `캔들 테스트 주문 실패: ${e.message}`);
-            }
-        }
-        
-        function stopCandleTest() {
-            if (candleTestInterval) {
-                clearInterval(candleTestInterval);
-                candleTestInterval = null;
-                
-                document.getElementById('candleTestStatus').textContent = '중지됨';
-                document.getElementById('candleTestStatus').style.color = 'var(--danger)';
-                
-                addLog('INFO', `캔들 테스트 중지: 총 ${candleOrderCount}개 주문`);
-            }
-        }
-
-        // ======== 실시간 캔들 디스플레이 (최적화) ========
-        let candleIndicatorTimeout = null;
-        
-        function updateCandleLogTable(msg) {
-            // 상태만 업데이트하고 리턴 (UI 렌더링은 루프에서 처리)
-            uiState.candle = msg;
-            uiState.candleDirty = true;
-            
-            // 인디케이터 즉시 반응 제거 (성능 부하 원인)
-            /*
-            if (domCache.candleIndicator) {
-                domCache.candleIndicator.style.background = '#3fb950';
-                clearTimeout(candleIndicatorTimeout);
-                candleIndicatorTimeout = setTimeout(() => { 
-                    if(domCache.candleIndicator) domCache.candleIndicator.style.background = '#333'; 
-                }, 200); // 200ms 깜빡임
-            }
-            */
-        }
-        
-        function renderCandleLogOptimized() {
-            const msg = uiState.candle;
-            if (!msg || !domCache.candleTime) return;
-            
-            const isBullish = parseFloat(msg.c) >= parseFloat(msg.o);
-            
-            domCache.candleTime.textContent = new Date().toLocaleTimeString();
-            domCache.candleO.textContent = msg.o;
-            domCache.candleH.textContent = msg.h;
-            domCache.candleL.textContent = msg.l;
-            domCache.candleC.textContent = msg.c;
-            domCache.candleC.style.color = isBullish ? 'var(--buy)' : 'var(--sell)';
-            domCache.candleV.textContent = msg.v || '-';
-        }
-
-        // ======== TradingView Lightweight Charts (타임프레임 지원) ========
-        let tvChart = null;
-        let candleSeries = null;
-        let volumeSeries = null;
-        let candleData = [];  // 현재 표시 중인 캔들 데이터 (선택된 타임프레임)
-        let volumeData = [];
-        let oneMinCandleBuffer = [];  // 수신한 1분봉 버퍼 (실시간 집계용)
-        const MAX_CANDLES = 500;
-        
-        // === 타임프레임 관리 ===
-        let selectedTimeframe = '1m';  // 현재 선택된 타임프레임
-        let chartSymbol = '';          // 현재 차트 심볼
-        let apiActiveCandle = null;    // API에서 받은 활성 캔들 (병합 기준점)
-        
-        // 타임프레임별 초 단위 매핑
-        const TIMEFRAME_SECONDS = {
-            '1m': 60, '3m': 180, '5m': 300, '15m': 900,
-            '30m': 1800, '1h': 3600, '4h': 14400, '1d': 86400
-        };
-        
-        // === 타임스탬프 변환 유틸리티 (하위 호환성 유지) ===
-        const KST_OFFSET_SEC = 9 * 60 * 60;  // 9시간 (초)
-        
-        function ymdhmToEpoch(ymdhm) {
-            // 하위 호환성: YYYYMMDDHHmm 문자열을 epoch으로 변환
-            // 하지만 이제는 백엔드에서 epoch을 제공하므로 이 함수는 레거시 지원용
-            if (typeof ymdhm === 'undefined' || ymdhm === null) return 0;
-
-            // 숫자이고 10자리 이하면 epoch으로 간주
-            let str = ymdhm.toString();
-            if (typeof ymdhm === 'number' && str.length <= 10) return ymdhm;
-            
-            // 12자리 문자열이면 YYYYMMDDHHmm 형식으로 간주
-            if (str.length < 12) return 0;
-            const y = parseInt(str.slice(0, 4));
-            const m = parseInt(str.slice(4, 6)) - 1;
-            const d = parseInt(str.slice(6, 8));
-            const h = parseInt(str.slice(8, 10));
-            const min = parseInt(str.slice(10, 12));
-            // KST → UTC 변환
-            const utcMs = Date.UTC(y, m, d, h, min, 0, 0) - (KST_OFFSET_SEC * 1000);
-            return Math.floor(utcMs / 1000);
-        }
-        
-        // === 타임스탬프 추출 (epoch 우선, ymdhm 폴백) ===
-        function extractTimestamp(msg) {
-            // 우선순위: t_epoch > time > t (ymdhm 변환)
-            if (msg.t_epoch !== undefined && msg.t_epoch !== null) {
-                const epoch = parseInt(msg.t_epoch);
-                // 13자리면 밀리초로 간주하고 초 단위로 변환
-                if (epoch > 9999999999) {
-                    return Math.floor(epoch / 1000);
-                }
-                return epoch;
-            }
-            if (msg.time !== undefined && msg.time !== null) {
-                // time이 이미 epoch인지 확인
-                const time = typeof msg.time === 'number' ? msg.time : parseInt(msg.time);
-                // 10자리 이하면 epoch으로 간주
-                if (time.toString().length <= 10) {
-                    return time;
-                }
-                // 13자리면 밀리초 -> 초
-                if (time.toString().length === 13) {
-                    return Math.floor(time / 1000);
-                }
-                // 12자리면 ymdhm으로 간주하고 변환
-                return ymdhmToEpoch(time);
-            }
-            // t 필드가 있으면 ymdhm으로 간주
-            if (msg.t !== undefined && msg.t !== null) {
-                return ymdhmToEpoch(msg.t);
-            }
-            return 0;
-        }
-        
-        // 타임프레임 선택 함수 (버튼 클릭 시)
-        async function selectTimeframe(tf) {
-            selectedTimeframe = tf;
-            
-            // 버튼 스타일 업데이트
-            document.querySelectorAll('.tf-btn').forEach(btn => {
-                if (btn.dataset.tf === tf) {
-                    btn.style.background = 'var(--accent)';
-                    btn.style.color = '#fff';
-                    btn.style.fontWeight = 'bold';
-                } else {
-                    btn.style.background = 'var(--bg-input)';
-                    btn.style.color = 'var(--text)';
-                    btn.style.fontWeight = 'normal';
-                }
-            });
-            
-            // 로딩 표시
-            document.getElementById('tfLoadingIndicator').style.display = 'inline';
-            
-            // 심볼이 있으면 해당 타임프레임으로 차트 데이터 다시 로드
-            if (chartSymbol) {
-                await loadChartDataForTimeframe(chartSymbol, tf);
-            }
-            
-            document.getElementById('tfLoadingIndicator').style.display = 'none';
-            addLog('INFO', `[CHART] 타임프레임 변경: ${tf}`);
-        }
-        
-        // Chart API에서 데이터 로드 (타임프레임별)
-        async function loadChartDataForTimeframe(symbol, interval) {
-            if (!candleSeries) return;
-            
-            const intervalSeconds = TIMEFRAME_SECONDS[interval] || 60;
-            
-            // 1. 먼저 버퍼에서 집계 (항상 실행)
-            let bufferCandles = [];
-            if (oneMinCandleBuffer.length > 0) {
-                const aggregated = aggregateToTimeframe(oneMinCandleBuffer, intervalSeconds);
-                bufferCandles = aggregated.map(c => ({
-                    time: c.time,
-                    open: c.open,
-                    high: c.high,
-                    low: c.low,
-                    close: c.close,
-                    volume: c.volume || 0
-                }));
-                addLog('INFO', `[CHART] 버퍼에서 ${bufferCandles.length}개 캔들 집계`);
-            }
-            
-            // 2. API 호출 시도
-            const chartEndpoint = document.getElementById('chartEndpoint')?.value || 
-                'https://4xs6g4w8l6.execute-api.ap-northeast-2.amazonaws.com/restV2/chart';
-            const url = `${chartEndpoint}?symbol=${symbol}&interval=${interval}&limit=200`;
-            console.log(`[CHART] Fetching history from: ${url}`);
-            
-            let apiCandles = [];
-            try {
-                const response = await fetch(url);
-                const result = await response.json();
-                
-                if (response.ok && result.data && result.data.length > 0) {
-                    console.log(`[CHART] API returned ${result.data.length} candles`);
-                    apiCandles = result.data.map(c => {
-                        // time 필드는 epoch (백엔드에서 제공)
-                        // time_ymdhm은 표시용 (사람이 읽기 쉬운 형식)
-                        const time = typeof c.time === 'number' ? c.time : parseInt(c.time);
-                        return {
-                            time: time,  // epoch (초, UTC 기준)
-                            open: parseFloat(c.open),
-                            high: parseFloat(c.high),
-                            low: parseFloat(c.low),
-                            close: parseFloat(c.close),
-                            volume: parseFloat(c.volume) || 0,
-                            active: c.active || false
-                        };
-                    });
-                    addLog('INFO', `[CHART] API에서 ${apiCandles.length}개 캔들 로드`);
-                    
-                    // 활성 캔들 추적
-                    const lastCandle = result.data[result.data.length - 1];
-                    if (lastCandle && lastCandle.active) {
-                        const time = typeof lastCandle.time === 'number' ? lastCandle.time : parseInt(lastCandle.time);
-                        apiActiveCandle = {
-                            time: time,  // epoch (초, UTC 기준)
-                            open: parseFloat(lastCandle.open),
-                            high: parseFloat(lastCandle.high),
-                            low: parseFloat(lastCandle.low),
-                            close: parseFloat(lastCandle.close),
-                            volume: parseFloat(lastCandle.volume) || 0
-                        };
+                    // 시장가 주문 특수 에러 처리
+                    if(result.error === 'MARKET_NO_LIQUIDITY') {
+                        adminLog('❌ 시장가 주문 실패: 오더북이 비어있습니다', 'err');
+                        alert('시장가 주문을 넣을 수 없습니다.\n오더북에 호가가 없습니다.');
                     } else {
-                        apiActiveCandle = null;
+                        adminLog(`${action} Failed: ${result.error || res.status}`, 'err');
                     }
                 }
-            } catch (error) {
-                addLog('WARN', `[CHART] API 오류: ${error.message}`);
-            }
-            
-            // 3. API + 버퍼 병합 (시간 기준 중복 제거)
-            const mergedMap = new Map();
-            
-            // API 데이터 먼저 (오래된 데이터)
-            for (const c of apiCandles) {
-                mergedMap.set(c.time, c);
-            }
-            
-            // 버퍼 데이터 병합 (API 데이터 우선 - 오직 API에 없는 최신 데이터만 추가)
-            for (const c of bufferCandles) {
-                if (!mergedMap.has(c.time)) {
-                    mergedMap.set(c.time, c);
-                }
-            }
-
-            // [CRITICAL FIX] Fetch 도중 수신된 실시간 데이터 추가 병합 (Race Condition 해결)
-            // loadChartDataForTimeframe이 실행되는 동안 oneMinCandleBuffer에 새로운 데이터가 들어왔을 수 있음
-            if (oneMinCandleBuffer.length > 0) {
-                 const currentAgg = aggregateToTimeframe(oneMinCandleBuffer, intervalSeconds);
-                 for (const c of currentAgg) {
-                     // [FIX] Priority: API Data > Buffer Data
-                     // Only use buffer data if it hasn't been provided by the API (newer/active candles).
-                     // This prevents stale/corrupt buffer data from overwriting clean historical stats.
-                     if (!mergedMap.has(c.time)) {
-                         mergedMap.set(c.time, {
-                             time: c.time,
-                             open: c.open,
-                             high: c.high,
-                             low: c.low,
-                             close: c.close,
-                             volume: c.volume || 0,
-                             active: true // Buffer data is considered "active" (hot)
-                         });
-                     } else {
-                         // Optional: If buffer is strictly newer (by update time) or has more volume?
-                         // For now, trust API history as the absolute truth for closed candles.
-                         // For the *current* active candle, API might be slightly behind WebSocket, 
-                         // but "activeCandle" from API response helps there.
-                     }
-                 }
-            }
-            
-            const allCandles = Array.from(mergedMap.values()).sort((a, b) => a.time - b.time);
-            
-            // 4. 데이터가 있으면 차트 업데이트
-            if (allCandles.length > 0) {
-                const candles = allCandles.map(c => ({
-                    time: c.time,
-                    open: c.open,
-                    high: c.high,
-                    low: c.low,
-                    close: c.close
-                }));
-                
-                const volumes = allCandles.map(c => ({
-                    time: c.time,
-                    value: c.volume || 0,
-                    color: c.close >= c.open 
-                        ? 'rgba(63, 185, 80, 0.5)' 
-                        : 'rgba(248, 81, 73, 0.5)'
-                }));
-                
-                candleData = candles;
-                volumeData = volumes;
-                
-                candleSeries.setData(candles);
-                volumeSeries.setData(volumes);
-                tvChart.timeScale().fitContent();
-                
-                const source = apiCandles.length > 0 ? 'API+버퍼' : '버퍼';
-                document.getElementById('chartCandleTotal').textContent = `${candles.length} (${interval}, ${source})`;
-                addLog('SUCCESS', `[CHART] ${symbol} ${interval}: ${candles.length}개 캔들 표시`);
-            } else {
-                addLog('WARN', `[CHART] 표시할 데이터 없음`);
+            } catch(e) {
+                adminLog(`Order Error: ${e.message}`, 'err');
             }
         }
-        
-        // 1분봉을 선택된 타임프레임으로 집계
-        function aggregateToTimeframe(oneMinCandles, intervalSeconds) {
-            if (intervalSeconds === 60) return oneMinCandles;  // 1분봉은 그대로 (서버 데이터 신뢰)
-            
-            const grouped = new Map();
-            
-            for (const c of oneMinCandles) {
-                const alignedTime = Math.floor(c.time / intervalSeconds) * intervalSeconds;
-                
-                if (!grouped.has(alignedTime)) {
-                    grouped.set(alignedTime, {
-                        time: alignedTime,
-                        open: c.open,
-                        high: c.high,
-                        low: c.low,
-                        close: c.close,
-                        volume: c.volume || 0
-                    });
-                } else {
-                    const existing = grouped.get(alignedTime);
-                    existing.high = Math.max(existing.high, c.high);
-                    existing.low = Math.min(existing.low, c.low);
-                    existing.close = c.close;
-                    existing.volume += c.volume || 0;
-                }
-            }
-            
-            return Array.from(grouped.values()).sort((a, b) => a.time - b.time);
-        }
-        
-        // TradingView 차트 초기화
-        function initTradingViewChart() {
-            if (tvChart) return;  // 이미 초기화됨
-            
-            const container = document.getElementById('tvChartContainer');
-            if (!container || typeof LightweightCharts === 'undefined') {
-                console.log('TradingView 차트 라이브러리 로딩 대기 중...');
-                setTimeout(initTradingViewChart, 100);
-                return;
-            }
-            
-            tvChart = LightweightCharts.createChart(container, {
-                width: container.clientWidth,
-                height: 300,
-                layout: {
-                    background: { type: 'solid', color: '#0d1117' },
-                    textColor: '#8b949e',
-                },
-                grid: {
-                    vertLines: { color: '#21262d' },
-                    horzLines: { color: '#21262d' },
-                },
-                crosshair: {
-                    mode: LightweightCharts.CrosshairMode.Normal,
-                },
-                rightPriceScale: {
-                    borderColor: '#30363d',
-                },
-                timeScale: {
-                    borderColor: '#30363d',
-                    timeVisible: true,
-                    secondsVisible: false,
-                },
-                localization: {
-                    locale: 'ko-KR',
-                    dateFormat: 'yyyy-MM-dd',
-                },
-            });
-            
-            // 캔들스틱 시리즈
-            candleSeries = tvChart.addCandlestickSeries({
-                upColor: '#3fb950',
-                downColor: '#f85149',
-                borderVisible: false, // [FIX] Disable borders to prevent T-shape artifacts on Marubozu
-                wickUpColor: '#3fb950',
-                wickDownColor: '#f85149',
-            });
-            
-            // 거래량 시리즈
-            volumeSeries = tvChart.addHistogramSeries({
-                color: '#26a69a',
-                priceFormat: { type: 'volume' },
-                priceScaleId: '',
-            });
-            volumeSeries.priceScale().applyOptions({
-                scaleMargins: { top: 0.8, bottom: 0 },
-            });
-            
-            // 리사이즈 처리
-            new ResizeObserver(() => {
-                if (tvChart) {
-                    tvChart.applyOptions({ width: container.clientWidth });
-                }
-            }).observe(container);
-            
-            console.log('TradingView 차트 초기화 완료');
-        }
-        
-        // ======== UI 최적화 State & Cache ========
-        const uiState = {
-            orderbook: { asks: [], bids: [] },
-            orderbookDirty: false,
-            candle: null,
-            candleDirty: false,
-            ticker: new Map(),
-            tickerDirty: false,
-            // 최근 캔들 차트 데이터
-            lastChartCandle: null,
-            chartDirty: false,
-            // 차트 스로틀링용 상태
-            pendingChartData: null,
-            pendingVolumeData: null,
-            chartUpdatePending: false
-        };
 
-        const domCache = {};
-        
-        function initDOMCache() {
-            // 호가창 요소 미리 생성
-            const asksEl = document.getElementById('asksList');
-            const bidsEl = document.getElementById('bidsList');
-            
-            // 미리 10개 행 생성 (REFLOW 최소화)
-            const createRows = () => {
-                let html = '';
-                for(let i=0; i<10; i++) {
-                    html += `<div class="orderbook-row" id="ask-row-${i}">
-                        <div class="bar ask" id="ask-bar-${i}"></div>
-                        <span class="price ask" id="ask-price-${i}">-</span>
-                        <span class="qty" id="ask-qty-${i}">-</span>
-                        <span class="total" id="ask-total-${i}">-</span>
-                    </div>`;
-                }
-                return html;
-            };
-            asksEl.innerHTML = createRows().replace(/ask/g, 'ask'); // Asks
-            bidsEl.innerHTML = createRows().replace(/ask/g, 'bid'); // Bids (ID 교체 필요)
-            // 위 replace는 정교하지 않으므로 다시 작성
-            
-            asksEl.innerHTML = ''; bidsEl.innerHTML = '';
-            for(let i=0; i<10; i++) {
-                asksEl.innerHTML += `<div class="orderbook-row"><div class="bar ask" id="ask-bar-${i}"></div><span class="price ask" id="ask-price-${i}">-</span><span class="qty" id="ask-qty-${i}">-</span><span class="total" id="ask-total-${i}">-</span></div>`;
-                bidsEl.innerHTML += `<div class="orderbook-row"><div class="bar bid" id="bid-bar-${i}"></div><span class="price bid" id="bid-price-${i}">-</span><span class="qty" id="bid-qty-${i}">-</span><span class="total" id="bid-total-${i}">-</span></div>`;
-            }
-
-            // 캐싱
-            domCache.asks = [];
-            domCache.bids = [];
-            for(let i=0; i<10; i++) {
-                domCache.asks.push({
-                    bar: document.getElementById(`ask-bar-${i}`),
-                    price: document.getElementById(`ask-price-${i}`),
-                    qty: document.getElementById(`ask-qty-${i}`),
-                    total: document.getElementById(`ask-total-${i}`)
-                });
-                domCache.bids.push({
-                    bar: document.getElementById(`bid-bar-${i}`),
-                    price: document.getElementById(`bid-price-${i}`),
-                    qty: document.getElementById(`bid-qty-${i}`),
-                    total: document.getElementById(`bid-total-${i}`)
-                });
-            }
-            
-            domCache.currentPrice = document.getElementById('currentPriceDisplay');
-            domCache.spread = document.getElementById('spreadDisplay');
-            
-            // 캔들 정보
-            domCache.candleTime = document.getElementById('candleTime');
-            domCache.candleO = document.getElementById('candleO');
-            domCache.candleH = document.getElementById('candleH');
-            domCache.candleL = document.getElementById('candleL');
-            domCache.candleC = document.getElementById('candleC');
-            domCache.candleV = document.getElementById('candleV');
-            domCache.candleIndicator = document.getElementById('candleIndicator');
-            
-            // 차트 정보
-            domCache.chartSymbol = document.getElementById('chartSymbolDisplay');
-            domCache.chartOpen = document.getElementById('chartOpen');
-            domCache.chartHigh = document.getElementById('chartHigh');
-            domCache.chartLow = document.getElementById('chartLow');
-            domCache.chartClose = document.getElementById('chartClose');
-            domCache.chartVolume = document.getElementById('chartVolume');
-            domCache.chartLastUpdate = document.getElementById('chartLastUpdate');
-            
-            // [UX 개선] 탭 활성화 시 데이터 자동 갱신 (백그라운드 스로틀링 보정)
-            document.addEventListener('visibilitychange', async () => {
-                if (!document.hidden && chartSymbol) {
-                    console.log('[UX] Tab activated, refreshing chart...');
-                    await loadChartDataForTimeframe(chartSymbol, selectedTimeframe);
-                }
-            });
-        }
-
-        function startRenderLoop() {
-            function loop() {
-                try {
-                    if (uiState.orderbookDirty) {
-                        renderOrderbookOptimized();
-                        uiState.orderbookDirty = false;
-                    }
-                    if (uiState.candleDirty) {
-                        renderCandleLogOptimized();
-                        uiState.candleDirty = false;
-                    }
-                    if (uiState.chartDirty) {
-                        renderChartInfoOptimized();
-                        uiState.chartDirty = false;
-                    }
-                    // 실시간 차트 그리기 (스로틀링 적용)
-                    if (uiState.chartUpdatePending) {
-                        updateTVChartFromBuffer();
-                        uiState.chartUpdatePending = false;
-                    }
-                } catch (e) {
-                    console.error("Render Loop Error:", e);
-                }
-                requestAnimationFrame(loop);
-            }
-            requestAnimationFrame(loop);
-        }
-        
-        // ======== 차트 유틸리티 (TradingView) ========
-        // 색상 상수
-        const COLOR_BUY = 'rgba(63, 185, 80, 0.5)';
-        const COLOR_SELL = 'rgba(248, 81, 73, 0.5)';
-        
-        // 1. WebSocket 메시지 수신부 (최대한 가볍게)
-        function ingestCandleMessage(msg) {
-            // 차트 초기화 체크
-            if (!tvChart) initTradingViewChart();
-
-            // 데이터 파싱
-            const o = parseFloat(msg.o);
-            const h = parseFloat(msg.h);
-            const l = parseFloat(msg.l);
-            const c = parseFloat(msg.c);
-            const v = parseFloat(msg.v) || 0;
-            
-            // 타임스탬프 추출
-            let t = extractTimestamp(msg);
-            
-            // NaN 체크 및 유효성 검사
-            if (!t || isNaN(t)) {
-                console.warn('[CHART] Invalid timestamp (NaN):', msg);
-                return;
-            }
-
-            // 미래 시간 방어 로직
-            const nowSec = Math.floor(Date.now() / 1000);
-            if (t > nowSec + 3600) t = nowSec + 3600;
-            
-            // 심볼 변경 체크 (첫 메시지거나 변경 시)
-            if (msg.s && msg.s !== chartSymbol) {
-                if (!chartSymbol) {
-                    chartSymbol = msg.s; // 처음이면 설정
-                } else {
-                    chartSymbol = msg.s;
-                }
-            }
-            // 현재 차트 심볼과 다른 데이터는 무시 (혼선 방지)
-            if (chartSymbol && msg.s !== chartSymbol) return;
-
-            // UI 상태 업데이트
-            uiState.lastChartCandle = { s: msg.s, o, h, l, c, v };
-            uiState.chartDirty = true;
-            
-            // ----------------------------------------------------
-            // 버퍼 업데이트
-            // ----------------------------------------------------
-            const oneMinAlignedTime = Math.floor(t / 60) * 60;
-            const existingIdx = oneMinCandleBuffer.findIndex(d => d.time === oneMinAlignedTime);
-            
-            if (existingIdx >= 0) {
-                const existing = oneMinCandleBuffer[existingIdx];
-                // 기존 캔들 업데이트 (종가 덮어쓰기)
-                existing.high = Math.max(existing.high, h);
-                existing.low = Math.min(existing.low, l);
-                existing.close = c; 
-                
-                // [수정] 서버에서 오는 v는 '누적 거래량'이므로 더하면 안 되고 덮어써야 함 (또는 Max)
-                existing.volume = Math.max(existing.volume, v);
-            } else {
-                // 새 1분봉 추가
-                oneMinCandleBuffer.push({ 
-                    time: oneMinAlignedTime, 
-                    open: o, high: h, low: l, close: c, volume: v 
-                });
-                
-                // 버퍼 크기 제한 (2시간)
-                if (oneMinCandleBuffer.length > 120) {
-                    oneMinCandleBuffer.shift();
-                }
-            }
-            
-            // 차트 갱신이 필요함을 마킹 (실제 계산은 Loop에서 함)
-            uiState.chartUpdatePending = true;
-        }
-
-        // 2. 루프에서 호출될 차트 계산 및 업데이트 함수
-        function updateTVChartFromBuffer() {
-            if (!candleSeries || oneMinCandleBuffer.length === 0) return;
-            
-            const intervalSeconds = TIMEFRAME_SECONDS[selectedTimeframe] || 60;
-            
-            // 버퍼의 마지막 데이터(가장 최신)를 현재 타임프레임으로 집계
-            const lastBuffer = oneMinCandleBuffer[oneMinCandleBuffer.length - 1];
-            const alignedTime = Math.floor(lastBuffer.time / intervalSeconds) * intervalSeconds;
-            
-            // 집계 대상 필터링
-            // 성능 최적화: 전체 필터링 대신 뒤에서부터 관련 데이터만 탐색
-            const periodCandles = [];
-            for (let i = oneMinCandleBuffer.length - 1; i >= 0; i--) {
-                const c = oneMinCandleBuffer[i];
-                const cAligned = Math.floor(c.time / intervalSeconds) * intervalSeconds;
-                if (cAligned === alignedTime) {
-                    periodCandles.push(c);
-                } else if (cAligned < alignedTime) {
-                    break; // 시간순 정렬되어 있다고 가정
-                }
-            }
-            // 역순으로 넣었으니 다시 정렬
-            periodCandles.sort((a, b) => a.time - b.time);
-            
-            if (periodCandles.length === 0) return;
-            
-            // 집계 로직
-            let aggregated;
-            let aggregatedVolume;
-            
-            if (selectedTimeframe === '1m') {
-                const latest = periodCandles[periodCandles.length - 1]; // 1분봉은 그냥 최신꺼
-                aggregated = {
-                    time: alignedTime,
-                    open: latest.open, high: latest.high, low: latest.low, close: latest.close
-                };
-                aggregatedVolume = latest.volume;
-            } else {
-                // 상위 타임프레임: OHLC 병합
-                aggregated = {
-                    time: alignedTime,
-                    open: periodCandles[0].open,
-                    high: Math.max(...periodCandles.map(c => c.high)),
-                    low: Math.min(...periodCandles.map(c => c.low)),
-                    close: periodCandles[periodCandles.length - 1].close
-                };
-                // 거래량 합산
-                aggregatedVolume = periodCandles.reduce((sum, c) => sum + (c.volume || 0), 0);
-                
-                // 기존 데이터와 병합 (일봉/4시간봉 등 끊김 방지)
-                // (candleData 배열은 차트에 그려진 데이터 히스토리)
-                const existingChartData = candleData.find(d => d.time === alignedTime);
-                if (existingChartData) {
-                    aggregated.open = existingChartData.open; // 시가 불변
-                    aggregated.high = Math.max(existingChartData.high, aggregated.high);
-                    aggregated.low = Math.min(existingChartData.low, aggregated.low);
-                    if (aggregatedVolume < existingChartData.value) {
-                         // 기존보다 작으면 무시 (누적이니까)
-                         // 단, 상위 타임프레임의 경우 1분봉 합산이므로 단순 비교는 어려울 수 있으나
-                         // 일단 계산된 합산이 더 정확하다고 가정.
-                    }
-                }
-            }
-            
-            // 시리즈 업데이트
-            const candlePoint = aggregated;
-            const volumePoint = { 
-                time: alignedTime, 
-                value: aggregatedVolume, 
-                color: aggregated.close >= aggregated.open ? COLOR_BUY : COLOR_SELL
-            };
-            
-            candleSeries.update(candlePoint);
-            if (volumeSeries) volumeSeries.update(volumePoint);
-            
-            document.getElementById('chartCandleTotal').textContent = `${candleData.length} (${selectedTimeframe})`;
-        }
-        
-        function renderChartInfoOptimized() {
-            const data = uiState.lastChartCandle;
-            if (!data || !domCache.chartSymbol) return;
-            
-            domCache.chartSymbol.textContent = `${data.s} (${selectedTimeframe})`;
-            domCache.chartOpen.textContent = data.o.toFixed(2);
-            domCache.chartHigh.textContent = data.h.toFixed(2);
-            domCache.chartLow.textContent = data.l.toFixed(2);
-            domCache.chartClose.textContent = data.c.toFixed(2);
-            domCache.chartVolume.textContent = data.v.toFixed(0);
-            domCache.chartLastUpdate.textContent = new Date().toLocaleTimeString();
-            
-            const isBullish = data.c >= data.o;
-            domCache.chartClose.style.color = isBullish ? 'var(--buy)' : 'var(--sell)';
-        }
-
-        function addClosedCandleToHistory(msg) {
-            // candle_close 이벤트 시 - 마감된 1분봉
-            // 1분봉 버퍼에서 제거하고 DynamoDB에 저장됨 (backup-handler에서 처리)
-            // 차트 데이터는 유지
-            document.getElementById('chartCandleTotal').textContent = `${candleData.length} (${selectedTimeframe})`;
-        }
-
-        // 페이지 로드 시 차트 초기화
-        // 페이지 로드 시 차트 초기화 + UI 최적화 초기화
-        window.addEventListener('load', () => {
-            initDOMCache();   // DOM 캐시 초기화
-            startRenderLoop(); // 렌더링 루프 시작
-            
-            setTimeout(initTradingViewChart, 500);
-        });
-
-        async function fetchChartData() {
-            const endpoint = document.getElementById('chartEndpoint').value;
-            const symbol = document.getElementById('chartSymbol').value || 'TEST';
-            const tf = document.getElementById('chartTimeframe').value;
-            const limit = parseInt(document.getElementById('chartLimit').value) || 30;
-            
-            if (!endpoint) {
-                addLog('ERROR', 'Chart API 엔드포인트를 입력하세요');
-                return;
-            }
-            
-            const url = `${endpoint}?symbol=${symbol}&interval=${tf}&limit=${limit}`;
-            addLog('INFO', `차트 조회: ${url}`);
+        // --- Admin / Symbol Manager ---
+        async function listSymbols() {
+            const endpoint = document.getElementById('adminApiUrl').value;
+            const adminKey = getAdminKey();
+            const el = document.getElementById('symbolList');
+            el.innerHTML = '<span style="color:#888;">Loading...</span>';
             
             try {
-                const response = await fetch(url);
-                const data = await response.json();
+                const headers = {};
+                if(adminKey) headers['Authorization'] = adminKey;
                 
-                if (response.ok) {
-                    // Step 4 진단 업데이트
-                    document.getElementById('stepIcon4').textContent = '✅';
-                    document.getElementById('stepResult4').textContent = response.ok ? '조회 성공' : '조회 실패';
-                    
-                    const candles = data.candles || data.data || data || [];
-                    document.getElementById('stepValue4').textContent = `${candles.length}개`;
-                    
-                    addLog('INFO', `차트 데이터: ${candles.length}개 캔들 수신`);
-                    
-                    // Step 3 업데이트 (DynamoDB 데이터 있는지 확인)
-                    const coldCount = data.coldCount || 0;
-                    const hotCount = data.hotCount || candles.length;
-                    if (coldCount > 0) {
-                        document.getElementById('stepIcon3').textContent = '✅';
-                        document.getElementById('stepResult3').textContent = `Cold: ${coldCount}개`;
-                        document.getElementById('stepValue3').textContent = 'DynamoDB 백업됨';
-                    } else if (candles.length > 0) {
-                        document.getElementById('stepIcon3').textContent = '⏳';
-                        document.getElementById('stepResult3').textContent = '백업 대기 중 (10분 주기)';
-                        document.getElementById('stepValue3').textContent = `Hot: ${hotCount}개`;
-                    }
-                    
-                    // 차트 렌더링
-                    renderChartResult(candles, symbol, tf);
+                const res = await fetch(endpoint, { headers });
+                const json = await res.json();
+                
+                // Render as badges
+                const symbols = json.symbols || [];
+                if(symbols.length > 0) {
+                    el.innerHTML = symbols.map(s => 
+                        `<span class="symbol-badge">${s}</span>`
+                    ).join('');
                 } else {
-                    addLog('ERROR', `차트 조회 실패: ${JSON.stringify(data)}`);
-                    document.getElementById('stepIcon4').textContent = '❌';
-                    document.getElementById('stepResult4').textContent = data.error || '조회 실패';
+                    el.innerHTML = '<span style="color:#888;">No active symbols</span>';
                 }
-            } catch (e) {
-                addLog('ERROR', `차트 API 에러: ${e.message}`);
-                document.getElementById('stepIcon4').textContent = '❌';
-                document.getElementById('stepResult4').textContent = e.message;
+                adminLog(`Found ${symbols.length} symbols`, 'in');
+            } catch(e) {
+                el.innerHTML = '<span style="color:#ff7b72;">Error: ' + e.message + '</span>';
+                adminLog('List symbols error: ' + e.message, 'err');
             }
-        }
-        
-        function renderChartResult(candles, symbol, tf) {
-            const resultDiv = document.getElementById('chartResult');
-            resultDiv.style.display = 'block';
-            
-            document.getElementById('chartCandleCount').innerHTML = `
-                <span style="color: var(--accent);">📊 ${symbol} [${tf}]</span> - 
-                총 <b>${candles.length}</b>개 캔들
-            `;
-            
-            if (candles.length === 0) {
-                document.getElementById('candleContainer').innerHTML = '<div style="color: var(--text-muted);">데이터 없음</div>';
-                document.getElementById('chartTableBody').innerHTML = '';
-                return;
-            }
-            
-            // 가격 범위 계산
-            const prices = candles.flatMap(c => [parseFloat(c.o || c.open), parseFloat(c.h || c.high), parseFloat(c.l || c.low), parseFloat(c.c || c.close)]);
-            const minPrice = Math.min(...prices);
-            const maxPrice = Math.max(...prices);
-            const range = maxPrice - minPrice || 1;
-            
-            // 캔들차트 시각화
-            const container = document.getElementById('candleContainer');
-            container.innerHTML = '';
-            
-            candles.forEach((c, i) => {
-                const open = parseFloat(c.o || c.open || 0);
-                const high = parseFloat(c.h || c.high || 0);
-                const low = parseFloat(c.l || c.low || 0);
-                const close = parseFloat(c.c || c.close || 0);
-                
-                const isBullish = close >= open;
-                const bodyTop = Math.max(open, close);
-                const bodyBottom = Math.min(open, close);
-                
-                const candleHeight = 120;
-                const highPos = ((high - minPrice) / range) * candleHeight;
-                const lowPos = ((low - minPrice) / range) * candleHeight;
-                const bodyTopPos = ((bodyTop - minPrice) / range) * candleHeight;
-                const bodyBottomPos = ((bodyBottom - minPrice) / range) * candleHeight;
-                
-                const candleEl = document.createElement('div');
-                candleEl.style.cssText = `
-                    position: relative;
-                    width: 8px;
-                    height: ${candleHeight}px;
-                    flex-shrink: 0;
-                `;
-                
-                // 위 꼬리
-                const upperWick = document.createElement('div');
-                upperWick.style.cssText = `
-                    position: absolute;
-                    left: 3.5px;
-                    width: 1px;
-                    bottom: ${bodyTopPos}px;
-                    height: ${highPos - bodyTopPos}px;
-                    background: ${isBullish ? 'var(--buy)' : 'var(--sell)'};
-                `;
-                
-                // 아래 꼬리
-                const lowerWick = document.createElement('div');
-                lowerWick.style.cssText = `
-                    position: absolute;
-                    left: 3.5px;
-                    width: 1px;
-                    bottom: ${lowPos}px;
-                    height: ${bodyBottomPos - lowPos}px;
-                    background: ${isBullish ? 'var(--buy)' : 'var(--sell)'};
-                `;
-                
-                // 몸통
-                const body = document.createElement('div');
-                body.style.cssText = `
-                    position: absolute;
-                    left: 0;
-                    width: 8px;
-                    bottom: ${bodyBottomPos}px;
-                    height: ${Math.max(1, bodyTopPos - bodyBottomPos)}px;
-                    background: ${isBullish ? 'var(--buy)' : 'var(--sell)'};
-                    border-radius: 1px;
-                `;
-                
-                candleEl.appendChild(upperWick);
-                candleEl.appendChild(lowerWick);
-                candleEl.appendChild(body);
-                candleEl.title = `O:${open} H:${high} L:${low} C:${close}`;
-                container.appendChild(candleEl);
-            });
-            
-            // 테이블 렌더링
-            const tbody = document.getElementById('chartTableBody');
-            tbody.innerHTML = candles.map(c => {
-                const time = c.t || c.time || c.timestamp;
-                const timeStr = time ? new Date(parseInt(time) * 1000).toLocaleString() : '-';
-                const o = c.o || c.open || '-';
-                const h = c.h || c.high || '-';
-                const l = c.l || c.low || '-';
-                const close = c.c || c.close || '-';
-                const v = c.v || c.volume || '-';
-                const isBullish = parseFloat(close) >= parseFloat(o);
-                
-                return `
-                    <tr style="color: ${isBullish ? 'var(--buy)' : 'var(--sell)'};">
-                        <td style="padding: 3px; border-bottom: 1px solid var(--border);">${timeStr}</td>
-                        <td style="padding: 3px; border-bottom: 1px solid var(--border);">${o}</td>
-                        <td style="padding: 3px; border-bottom: 1px solid var(--border);">${h}</td>
-                        <td style="padding: 3px; border-bottom: 1px solid var(--border);">${l}</td>
-                        <td style="padding: 3px; border-bottom: 1px solid var(--border);">${close}</td>
-                        <td style="padding: 3px; border-bottom: 1px solid var(--border);">${v}</td>
-                    </tr>
-                `;
-            }).reverse().join('');
         }
 
-        // =====================================================
-        // 관리자 패널 기능
-        // =====================================================
-        const ADMIN_API_ENDPOINT = 'https://0eeto6kblk.execute-api.ap-northeast-2.amazonaws.com/admin/Supernoba-admin';
-        let adminUnlocked = false;
-        let adminApiKey = '';  // Lambda ADMIN_API_KEY
-        
-        function unlockAdmin() {
-            const inputKey = document.getElementById('adminPassword').value.trim();
-            if (!inputKey) {
-                alert('API Key를 입력하세요.');
+        async function addSymbol() {
+            const sym = document.getElementById('newSymbol').value.trim().toUpperCase();
+            if(!sym) { 
+                adminLog('Enter a symbol name', 'err');
+                return; 
+            }
+            const endpoint = document.getElementById('adminApiUrl').value;
+            const adminKey = getAdminKey();
+            
+            if(!adminKey) {
+                adminLog('Admin Key required for this operation', 'err');
                 return;
             }
             
-            // API Key 저장 (실제 검증은 Admin 기능 사용 시 수행)
-            adminUnlocked = true;
-            adminApiKey = inputKey;
-            document.getElementById('adminLocked').style.display = 'none';
-            document.getElementById('adminUnlocked').style.display = 'block';
-            document.getElementById('adminStatus').style.background = 'var(--success)';
-            document.getElementById('adminStatus').textContent = '인증됨';
-            document.getElementById('adminPassword').value = '';
-            addLog('INFO', '[ADMIN] API Key 설정됨 (실제 검증은 기능 사용 시 수행)');
-        }
-        
-        function lockAdmin() {
-            adminUnlocked = false;
-            adminApiKey = '';
-            document.getElementById('adminLocked').style.display = 'block';
-            document.getElementById('adminUnlocked').style.display = 'none';
-            document.getElementById('adminStatus').style.background = 'var(--danger)';
-            document.getElementById('adminStatus').textContent = '잠김';
-            addLog('INFO', '[ADMIN] 관리자 패널 잠금됨');
-        }
-        
-        async function queryDynamoDB() {
-            const symbol = document.getElementById('querySymbol').value.toUpperCase().trim();
-            const interval = document.getElementById('queryInterval').value;
-            
-            if (!symbol) {
-                document.getElementById('queryResult').innerHTML = '<span style="color: var(--danger);">심볼을 입력하세요</span>';
-                return;
-            }
-            
-            document.getElementById('queryResult').innerHTML = '⏳ 조회 중...';
+            adminLog(`Adding symbol: ${sym}...`, 'out');
             
             try {
-                const chartApiEndpoint = document.getElementById('chartApiEndpoint').value;
-                const url = `${chartApiEndpoint}?symbol=${symbol}&interval=${interval}&limit=10`;
-                const response = await fetch(url);
-                const result = await response.json();
-                
-                if (response.ok && result.data) {
-                    const count = result.data.length;
-                    const hasActive = result.data.some(c => c.active);
-                    let html = `<strong>${symbol} ${interval}</strong>: ${count}개 캔들`;
-                    if (hasActive) html += ' 🟢';
-                    html += '<br>';
-                    
-                    if (count > 0) {
-                        const first = result.data[0];
-                        const last = result.data[count - 1];
-                        const firstTime = new Date(first.time * 1000).toLocaleString('ko-KR');
-                        const lastTime = new Date(last.time * 1000).toLocaleString('ko-KR');
-                        html += `<span style="color: var(--text-muted);">범위: ${firstTime} ~ ${lastTime}</span>`;
-                    }
-                    
-                    document.getElementById('queryResult').innerHTML = html;
-                    addLog('INFO', `[ADMIN] ${symbol} ${interval} 조회: ${count}개`);
-                } else {
-                    document.getElementById('queryResult').innerHTML = `<span style="color: var(--danger);">데이터 없음 또는 오류</span>`;
-                }
-            } catch (error) {
-                document.getElementById('queryResult').innerHTML = `<span style="color: var(--danger);">오류: ${error.message}</span>`;
-            }
-        }
-        
-        async function resetDatabase() {
-            const confirm = document.getElementById('resetConfirm').value;
-            
-            if (confirm !== 'DELETE') {
-                document.getElementById('resetStatus').innerHTML = '<span style="color: var(--danger);">DELETE를 정확히 입력하세요</span>';
-                return;
-            }
-            
-            if (!window.confirm('⚠️ 정말로 모든 데이터를 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다!')) {
-                return;
-            }
-            
-            document.getElementById('resetStatus').innerHTML = '⏳ 초기화 중...';
-            
-            try {
-                // Admin Lambda 호출 (저장된 API Key 사용)
-                const response = await fetch(ADMIN_API_ENDPOINT, {
+                const res = await fetch(endpoint, {
                     method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Authorization': adminApiKey
+                    headers: {
+                        'Content-Type': 'application/json', 
+                        'Authorization': adminKey
                     },
-                    body: JSON.stringify({ action: 'resetDatabase', confirm: true })
+                    body: JSON.stringify({ symbol: sym })
                 });
+                const json = await res.json();
                 
-                const result = await response.json();
-                
-                if (response.ok) {
-                    document.getElementById('resetStatus').innerHTML = '<span style="color: var(--success);">✅ 초기화 완료!</span>';
-                    document.getElementById('resetConfirm').value = '';
-                    addLog('WARN', '[ADMIN] 데이터베이스 초기화 완료');
+                if(res.ok) {
+                    adminLog(`Symbol added: ${json.symbol} - ${json.message}`, 'in');
+                    listSymbols();
                 } else {
-                    document.getElementById('resetStatus').innerHTML = `<span style="color: var(--danger);">오류: ${result.error || response.status}</span>`;
+                    adminLog(`Failed: ${json.error || res.status}`, 'err');
                 }
-            } catch (error) {
-                document.getElementById('resetStatus').innerHTML = `<span style="color: var(--danger);">API 오류: ${error.message}</span>`;
-                addLog('ERROR', `[ADMIN] 초기화 실패: ${error.message}`);
+            } catch(e) {
+                adminLog('Add symbol error: ' + e.message, 'err');
             }
         }
 
-        // 초기화
-        addLog('INFO', 'Supernoba API Test Console 시작');
-        // initOrderbookPlaceholder(); // 제거됨 (uiState 사용)
-        console.log('Test Console Script Loaded. Waiting for window load...');
+        async function removeSymbol() {
+            const sym = document.getElementById('newSymbol').value.trim().toUpperCase();
+            if(!sym) { 
+                adminLog('Enter a symbol name to delete', 'err');
+                return; 
+            }
+            const endpoint = document.getElementById('adminApiUrl').value;
+            const adminKey = getAdminKey();
+            
+            if(!adminKey) {
+                adminLog('Admin Key required for this operation', 'err');
+                return;
+            }
+            
+            if(!confirm(`Delete symbol "${sym}"?`)) return;
+            
+            adminLog(`Removing symbol: ${sym}...`, 'out');
+            
+            try {
+                // Use DELETE method with symbol in URL path
+                const res = await fetch(`${endpoint}/${sym}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': adminKey }
+                });
+                const json = await res.json();
+                
+                if(res.ok) {
+                    adminLog(`Symbol removed: ${sym} - ${json.message}`, 'in');
+                    listSymbols();
+                } else {
+                    adminLog(`Failed: ${json.error || res.status}`, 'err');
+                }
+            } catch(e) {
+                adminLog('Remove symbol error: ' + e.message, 'err');
+            }
+        }
+
+        // --- UI Utils ---
+        function setBottomTab(name) {
+            document.querySelectorAll('.bottom-tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
+        function setTimeframe(tf) {
+            state.interval = tf;
+            activeAggCandle = null; // Reset aggregation cache
+            fetchChartData(state.symbol);
+        }
+        
+        function setOrderType(type) { 
+            state.type = type; 
+            document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`btnType${type.charAt(0)+type.slice(1).toLowerCase()}`).classList.add('active');
+            const px = document.getElementById('inputPrice');
+             if(type === 'MARKET') { px.disabled=true; px.value=''; px.placeholder='Market'; }
+             else { px.disabled=false; px.placeholder=''; }
+        }
+        
+        function setSide(side) {
+            state.side = side;
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelector(`.tab-btn.${side.toLowerCase()}`).classList.add('active');
+            const btn = document.getElementById('btnOrder');
+            btn.className = `order-btn btn-${side.toLowerCase()}`;
+            btn.innerText = (side === 'BUY') ? '매수 주문' : '매도 주문';
+        }
+
+        // --- Chart ---
+        let chart, candleSeries;
+        function initChart() {
+             const el = document.getElementById('tvChartContainer');
+            if(window.LightweightCharts) {
+                el.innerHTML = '';
+                chart = LightweightCharts.createChart(el, { 
+                    layout: { background: { color: '#0d1117' }, textColor: '#8b949e' },
+                    grid: { vertLines: { color: '#21262d'}, horzLines: { color: '#21262d'} },
+                    timeScale: { timeVisible: true, secondsVisible: false },
+                });
+                candleSeries = chart.addCandlestickSeries({
+                    upColor: '#238636',
+                    downColor: '#da3633',
+                    borderUpColor: '#238636',
+                    borderDownColor: '#da3633',
+                    wickUpColor: '#238636',
+                    wickDownColor: '#da3633',
+                });
+                fetchChartData(state.symbol);
+                window.addEventListener('resize', () => chart.resize(el.offsetWidth, el.offsetHeight));
+                // Initial resize
+                setTimeout(() => chart.resize(el.offsetWidth, el.offsetHeight), 100);
+            }
+        }
+
+        async function fetchChartData(symbol) {
+             if(!isLoggedIn) {
+                 adminLog('로그인 후 이용해주세요', 'err');
+                 return;
+             }
+             const url = document.getElementById('chartApiUrl').value;
+             if(!url) {
+                 log('Chart API URL not configured');
+                 return;
+             }
+             try {
+                 const res = await fetch(`${url}?symbol=${symbol}&interval=${state.interval}&limit=500`);
+                 const json = await res.json();
+                 if(json.data && json.data.length > 0) {
+                    const d = json.data.sort((a,b) => a.time - b.time).map(x => ({
+                        time: x.time, 
+                        open: parseFloat(x.open), 
+                        high: parseFloat(x.high), 
+                        low: parseFloat(x.low), 
+                        close: parseFloat(x.close)
+                    }));
+                    candleSeries.setData(d);
+                    log(`Chart loaded: ${d.length} candles`);
+                 } else {
+                    log('No chart data available');
+                 }
+             } catch(e) { log('Chart Load Err: ' + e.message); }
+        }
+
+        // Track active candle for multi-minute aggregation
+        let activeAggCandle = null; // { time, open, high, low, close }
+        
+        function updateChartWithCandle(candle, isClosed = false) {
+            if(!candleSeries) return;
+            
+            // Get interval in seconds
+            const intervalSeconds = {
+                '1m': 60, '3m': 180, '5m': 300, '10m': 600, '15m': 900, '30m': 1800, '1h': 3600
+            }[state.interval] || 60;
+            
+            // Use epoch time if available, otherwise parse t
+            let rawTime = candle.t_epoch || candle.time;
+            if(!rawTime && candle.t) {
+                // Parse YYYYMMDDHHmm format
+                const t = candle.t;
+                if(t.length === 12) {
+                    const y = parseInt(t.slice(0, 4));
+                    const m = parseInt(t.slice(4, 6)) - 1;
+                    const d = parseInt(t.slice(6, 8));
+                    const h = parseInt(t.slice(8, 10));
+                    const min = parseInt(t.slice(10, 12));
+                    // KST to UTC
+                    rawTime = Math.floor(Date.UTC(y, m, d, h, min) / 1000) - (9 * 3600);
+                }
+            }
+            
+            if(!rawTime) return;
+            
+            // Normalize epoch to interval boundary
+            const alignedTime = Math.floor(rawTime / intervalSeconds) * intervalSeconds;
+            
+            // Get incoming candle OHLC
+            const inOpen = parseFloat(candle.o);
+            const inHigh = parseFloat(candle.h);
+            const inLow = parseFloat(candle.l);
+            const inClose = parseFloat(candle.c);
+            
+            // Multi-minute aggregation: accumulate within the same interval window
+            if(intervalSeconds > 60) {
+                if(!activeAggCandle || activeAggCandle.time !== alignedTime) {
+                    // New interval window - start fresh with TradingView property names
+                    activeAggCandle = { 
+                        time: alignedTime, 
+                        open: inOpen, 
+                        high: inHigh, 
+                        low: inLow, 
+                        close: inClose 
+                    };
+                } else {
+                    // Same window - update high/low/close (keep original open)
+                    activeAggCandle.high = Math.max(activeAggCandle.high, inHigh);
+                    activeAggCandle.low = Math.min(activeAggCandle.low, inLow);
+                    activeAggCandle.close = inClose;
+                }
+                
+                // TradingView expects: { time, open, high, low, close }
+                candleSeries.update(activeAggCandle);
+            } else {
+                // 1-minute interval: use directly
+                candleSeries.update({
+                    time: alignedTime,
+                    open: inOpen,
+                    high: inHigh,
+                    low: inLow,
+                    close: inClose
+                });
+            }
+        }
+
+        function renderOpenOrders() {
+             const tbody = document.getElementById('openOrdersTable');
+             tbody.innerHTML = state.orders.map(o => `
+                <tr onclick="document.getElementById('targetOrderId').value='${o.order_id}'">
+                    <td>${new Date(o.timestamp||0).toLocaleTimeString()}</td>
+                    <td>${o.symbol}</td>
+                    <td>${o.type}</td>
+                    <td class="${o.side==='BUY'?'price-up':'price-down'}">${o.side}</td>
+                    <td>${o.price}</td>
+                    <td>${o.quantity}</td>
+                    <td>${o.filled_qty||0}</td>
+                    <td>${o.status}</td>
+                    <td><button class="action-btn btn-cancel" onclick="event.stopPropagation(); document.getElementById('targetOrderId').value='${o.order_id}'; submitOrder('CANCEL')">X</button></td>
+                </tr>
+             `).join('');
+        }
+
+        function renderOrderbook(data) {
+             // Data format: {"a":[],"b":[],"c":6.41,"e":"d","p":3638,"s":"TEST","t":1766197528304,"yc":-43.08}
+             const asks = (data.a || []).slice(0,10).reverse();
+             const bids = (data.b || []).slice(0,10);
+             
+             // Update last price if available
+             if(data.c) {
+                 document.getElementById('ob-last-price').innerText = parseFloat(data.c).toFixed(2);
+             }
+            
+             // Calculate spread
+             const bestAsk = asks.length ? parseFloat(asks[asks.length-1][0]) : 0;
+             const bestBid = bids.length ? parseFloat(bids[0][0]) : 0;
+             if(bestAsk && bestBid) {
+                 const spr = (bestAsk - bestBid).toFixed(2);
+                 document.getElementById('ob-spread').innerText = `Spread: ${spr}`;
+             }
+
+             // Render asks (sell orders) - render with bars
+             const maxAskQty = asks.reduce((max, r) => Math.max(max, parseFloat(r[1] || 0)), 0) || 1;
+             document.getElementById('ob-asks').innerHTML = asks.map(r => {
+                 const price = parseFloat(r[0]).toFixed(2);
+                 const qty = Math.floor(parseFloat(r[1]));
+                 const pct = (parseFloat(r[1]) / maxAskQty * 100).toFixed(1);
+                 return `<tr><td class="price-down">${price}</td><td>${qty}</td><td><div class="bar-bg bar-ask" style="width:${pct}%"></div></td></tr>`;
+             }).join('');
+             
+             // Render bids (buy orders)
+             const maxBidQty = bids.reduce((max, r) => Math.max(max, parseFloat(r[1] || 0)), 0) || 1;
+             document.getElementById('ob-bids').innerHTML = bids.map(r => {
+                 const price = parseFloat(r[0]).toFixed(2);
+                 const qty = Math.floor(parseFloat(r[1]));
+                 const pct = (parseFloat(r[1]) / maxBidQty * 100).toFixed(1);
+                 return `<tr><td class="price-up">${price}</td><td>${qty}</td><td><div class="bar-bg bar-bid" style="width:${pct}%"></div></td></tr>`;
+             }).join('');
+        }
     </script>
 </body>
 </html>

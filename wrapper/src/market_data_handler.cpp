@@ -101,28 +101,14 @@ void MarketDataHandler::on_fill(const OrderPtr& order,
         redis_->updateCandle(symbol, fill_price, fill_qty, epoch_sec);
     }
     
-    // === 체결 내역 캐시 저장 ===
+    // buyer/seller ID 추출
     const std::string& buyer_id = order->is_buy() ? 
         order->user_id() : matched_order->user_id();
     const std::string& seller_id = order->is_buy() ? 
         matched_order->user_id() : order->user_id();
     
-    if (redis_ && redis_->isConnected()) {
-        nlohmann::json trade;
-        trade["t"] = epoch_sec;  // Unix timestamp (초)
-        trade["p"] = fill_price;
-        trade["q"] = fill_qty;
-        trade["b"] = buyer_id;
-        trade["s"] = seller_id;
-        trade["bo"] = order->is_buy() ? order->order_id() : matched_order->order_id();
-        trade["so"] = order->is_buy() ? matched_order->order_id() : order->order_id();
-        
-        redis_->lpush("trades:" + symbol, trade.dump());
-        redis_->ltrim("trades:" + symbol, 0, 99999);  // 최대 10만개 유지
-        Logger::debug("Trade saved to cache:", symbol);
-    }
-    
-    // === DynamoDB 체결 내역 저장 ===
+    // === DynamoDB 체결 내역 직접 저장 ===
+    // 참고: trades:* Valkey 캐시는 제거됨 (API 조회는 DynamoDB에서, 실시간 알림은 WebSocket으로)
 #ifdef USE_KINESIS
     if (dynamodb_ && dynamodb_->isConnected()) {
         const std::string& bo = order->is_buy() ? order->order_id() : matched_order->order_id();
@@ -131,10 +117,12 @@ void MarketDataHandler::on_fill(const OrderPtr& order,
         bool db_saved = dynamodb_->putTrade(symbol, epoch_sec, fill_price, fill_qty,
                                              buyer_id, seller_id, bo, so);
         if (db_saved) {
-            Logger::info("DynamoDB trade saved:", symbol, "price:", fill_price, "qty:", fill_qty);
+            Logger::info("DB_SAVE_OK:", symbol, fill_price, "x", fill_qty, "ts:", epoch_sec);
         } else {
-            Logger::warn("DynamoDB trade save FAILED:", symbol);
+            Logger::error("DB_SAVE_FAIL:", symbol, fill_price, "x", fill_qty, "- check DynamoDB connection");
         }
+    } else {
+        Logger::warn("DB_NOT_CONNECTED:", symbol, "- trade not saved to DynamoDB");
     }
 #endif
     
