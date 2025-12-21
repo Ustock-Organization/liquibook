@@ -80,12 +80,24 @@ void NotificationClient::enqueue(const NotificationMessage& msg) {
 void NotificationClient::sendOrderStatus(const std::string& user_id,
                                          const std::string& order_id,
                                          const std::string& symbol,
+                                         const std::string& side,
+                                         uint64_t price,
+                                         uint64_t quantity,
+                                         const std::string& order_type,
+                                         uint64_t filled_qty,
+                                         uint64_t filled_price,
                                          const std::string& status,
                                          const std::string& reason) {
     NotificationMessage msg;
     msg.user_id = user_id;
     msg.order_id = order_id;
     msg.symbol = symbol;
+    msg.side = side;
+    msg.price = price;
+    msg.quantity = quantity;
+    msg.order_type = order_type;
+    msg.filled_qty = filled_qty;
+    msg.filled_price = filled_price;
     msg.status = status;
     msg.reason = reason;
     msg.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -133,6 +145,12 @@ void NotificationClient::workerLoop() {
         Aws::Utils::Json::JsonValue data;
         data.WithString("order_id", msg.order_id);
         data.WithString("symbol", msg.symbol);
+        data.WithString("side", msg.side);
+        data.WithInt64("price", msg.price);
+        data.WithInt64("quantity", msg.quantity);
+        data.WithString("type", msg.order_type);
+        data.WithInt64("filled_qty", msg.filled_qty);
+        data.WithInt64("filled_price", msg.filled_price);
         data.WithString("status", msg.status);
         if (!msg.reason.empty()) {
             data.WithString("reason", msg.reason);

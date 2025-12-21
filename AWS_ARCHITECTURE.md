@@ -264,24 +264,21 @@ sequenceDiagram
     Note right of V: user:{userId}:connections = [connId1, connId2]
     L1-->>U: 연결 완료
     
-    Note over E,K: 2단계: 주문 상태 변경
+    Note over E: 2단계: 주문 상태 변경 (C++ Engine)
     E->>E: 주문 처리 (체결/거부/취소)
-    E->>K: 상태 이벤트 발행
-    Note right of K: {user_id, order_id, status, reason}
     
-    Note over K,U: 3단계: 사용자에게 알림
-    K->>L2: Kinesis 트리거
-    L2->>V: user:{userId}:connections 조회
-    V-->>L2: [connId1, connId2]
-    L2->>WS: PostToConnection (connId1)
-    L2->>WS: PostToConnection (connId2)
-    WS-->>U: 실시간 알림 수신
+    Note over E,WS: 3단계: 직접 알림 (NotificationClient)
+    E->>V: 워커 스레드: user:{userId}:connections 조회
+    V-->>E: [connId1, connId2]
+    E->>WS: PostToConnection (connId1)
+    E->>WS: PostToConnection (connId2)
+    WS-->>U: 실시간 알림 수신 (지연시간 < 5ms)
 ```
 
-**사용자 특정 방법:**
+**사용자 특정 방법 (Direct Notification):**
 1. 연결 시: `user:{userId}:connections` Set에 connectionId 저장
-2. 주문 처리 시: Engine이 user_id 포함하여 Kinesis 발행
-3. Lambda 수신 시: user_id로 연결 목록 조회 → 모든 기기에 전송
+2. 주문 처리 시: Engine(Worker Thread)이 Redis에서 연결 ID 조회
+3. 직접 전송: Engine -> API Gateway (HTTPS) -> Client (latency 최소화)
 
 ---
 
@@ -377,7 +374,7 @@ candleSeries.update(aggregatedCandle)  ← 마지막 캔들만 업데이트 (권
 |--------|--------|------|------|
 | `supernoba-orders` | 4 | 주문 입력 | Lambda → Engine |
 | `supernoba-fills` | 2 | 체결 알림 | Engine → Lambda (알림용) |
-| `supernoba-order-status` | 2 | 주문 상태 변경 | Engine → Lambda |
+| `supernoba-order-status` | 🛑 삭제됨 | (Legacy) | - |
 
 > ⚠️ `supernoba-depth` 스트림은 **사용하지 않음**. Depth는 Valkey 직접 저장.
 
@@ -464,7 +461,7 @@ candleSeries.update(aggregatedCandle)  ← 마지막 캔들만 업데이트 (권
 | `Supernoba-disconnect-handler` | `$disconnect` | 구독 정리, stale 연결 정리 | ✅ |
 | `Supernoba-trades-backup-handler` | EventBridge (3분) | `candle:closed:*` → S3 + DynamoDB | ✅ |
 | `Supernoba-chart-data-handler` | API Gateway HTTP | Hot(Valkey) + Cold(DynamoDB) 병합 조회 | ✅ |
-| `Supernoba-order-status-handler` | Kinesis | order-status → WebSocket 알림 | ✅ |
+| `Supernoba-order-status-handler` | 🛑 삭제됨 | (Legacy) | - |
 
 ### 인증 관련 환경변수 (connect-handler)
 
@@ -622,6 +619,7 @@ cd ~/liquibook/streamer/node
 | 2025-12-20 | order-status WebSocket Lambda 추가 |
 | 2025-12-20 | 시장가 주문 IOC 강제 + 호가 검증 |
 | 2025-12-20 | 클라이언트 로그인 가드 추가 |
+| 2025-12-21 | 알림 아키텍처 변경: Kinesis 제거, Engine 직접 전송 (Latency 개선) |
 
 ---
 

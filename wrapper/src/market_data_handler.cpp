@@ -27,10 +27,11 @@ void MarketDataHandler::on_accept(const OrderPtr& order) {
     
     // Direct WebSocket notification (preferred)
     if (notifier_) {
-        // Logger::debug("TRACE: Calling sendOrderStatus for ACCEPTED");
+        std::string side = order->is_buy() ? "BUY" : "SELL";
+        std::string type = (order->price() == 0) ? "MARKET" : "LIMIT";
         notifier_->sendOrderStatus(order->user_id(), order->order_id(), 
-                                   order->symbol(), "ACCEPTED");
-        // Logger::debug("TRACE: sendOrderStatus completed");
+                                   order->symbol(), side, order->price(), order->order_qty(), type, 
+                                   0, 0, "ACCEPTED");
     }
 }
 
@@ -39,8 +40,11 @@ void MarketDataHandler::on_reject(const OrderPtr& order, const char* reason) {
     Metrics::instance().incrementOrdersRejected();
     
     if (notifier_) {
+        std::string side = order->is_buy() ? "BUY" : "SELL";
+        std::string type = (order->price() == 0) ? "MARKET" : "LIMIT";
         notifier_->sendOrderStatus(order->user_id(), order->order_id(), 
-                                   order->symbol(), "REJECTED", reason);
+                                   order->symbol(), side, order->price(), order->order_qty(), type, 
+                                   0, 0, "REJECTED", reason);
     }
 }
 
@@ -136,10 +140,26 @@ void MarketDataHandler::on_fill(const OrderPtr& order,
     
     // Direct WebSocket notification for both parties
     if (notifier_) {
-        notifier_->sendOrderStatus(order->user_id(), order->order_id(), 
-                                   symbol, "FILLED");
-        notifier_->sendOrderStatus(matched_order->user_id(), matched_order->order_id(), 
-                                   symbol, "FILLED");
+        // Notification for both maker and taker
+        if (order->is_buy()) {
+             // order is BUY
+             notifier_->sendOrderStatus(order->user_id(), order->order_id(), symbol, "BUY", 
+                                        order->price(), order->order_qty(), (order->price()==0?"MARKET":"LIMIT"), 
+                                        fill_qty, fill_price, "FILLED");
+             // matched is SELL
+             notifier_->sendOrderStatus(matched_order->user_id(), matched_order->order_id(), symbol, "SELL", 
+                                        matched_order->price(), matched_order->order_qty(), (matched_order->price()==0?"MARKET":"LIMIT"), 
+                                        fill_qty, fill_price, "FILLED");
+        } else {
+             // order is SELL
+             notifier_->sendOrderStatus(order->user_id(), order->order_id(), symbol, "SELL", 
+                                        order->price(), order->order_qty(), (order->price()==0?"MARKET":"LIMIT"), 
+                                        fill_qty, fill_price, "FILLED");
+             // matched is BUY
+             notifier_->sendOrderStatus(matched_order->user_id(), matched_order->order_id(), symbol, "BUY", 
+                                        matched_order->price(), matched_order->order_qty(), (matched_order->price()==0?"MARKET":"LIMIT"), 
+                                        fill_qty, fill_price, "FILLED");
+        }
     }
 }
 
@@ -148,8 +168,11 @@ void MarketDataHandler::on_cancel(const OrderPtr& order) {
     Logger::info("Order CANCELLED:", order->order_id());
     
     if (notifier_) {
+        std::string side = order->is_buy() ? "BUY" : "SELL";
+        std::string type = (order->price() == 0) ? "MARKET" : "LIMIT";
         notifier_->sendOrderStatus(order->user_id(), order->order_id(), 
-                                   order->symbol(), "CANCELLED");
+                                   order->symbol(), side, order->price(), order->order_qty(), type, 
+                                   order->filled_qty(), 0, "CANCELLED");
     }
 }
 
@@ -157,8 +180,11 @@ void MarketDataHandler::on_cancel_reject(const OrderPtr& order, const char* reas
     Logger::warn("Cancel REJECTED:", order->order_id(), "reason:", reason);
     
     if (notifier_) {
+        std::string side = order->is_buy() ? "BUY" : "SELL";
+        std::string type = (order->price() == 0) ? "MARKET" : "LIMIT";
         notifier_->sendOrderStatus(order->user_id(), order->order_id(), 
-                                   order->symbol(), "CANCEL_REJECTED", reason);
+                                   order->symbol(), side, order->price(), order->order_qty(), type, 
+                                   order->filled_qty(), 0, "CANCEL_REJECTED", reason);
     }
 }
 
@@ -169,8 +195,11 @@ void MarketDataHandler::on_replace(const OrderPtr& order,
                  "delta:", size_delta, "new_price:", new_price);
     
     if (notifier_) {
+        std::string side = order->is_buy() ? "BUY" : "SELL";
+        std::string type = (order->price() == 0) ? "MARKET" : "LIMIT";
         notifier_->sendOrderStatus(order->user_id(), order->order_id(), 
-                                   order->symbol(), "REPLACED");
+                                   order->symbol(), side, order->price(), order->order_qty(), type, 
+                                   order->filled_qty(), 0, "REPLACED");
     }
 }
 
@@ -178,8 +207,11 @@ void MarketDataHandler::on_replace_reject(const OrderPtr& order, const char* rea
     Logger::warn("Replace REJECTED:", order->order_id(), "reason:", reason);
     
     if (notifier_) {
+        std::string side = order->is_buy() ? "BUY" : "SELL";
+        std::string type = (order->price() == 0) ? "MARKET" : "LIMIT";
         notifier_->sendOrderStatus(order->user_id(), order->order_id(), 
-                                   order->symbol(), "REPLACE_REJECTED", reason);
+                                   order->symbol(), side, order->price(), order->order_qty(), type, 
+                                   order->filled_qty(), 0, "REPLACE_REJECTED", reason);
     }
 }
 

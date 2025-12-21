@@ -192,8 +192,14 @@
                     <table class="orderbook-table"><tbody id="ob-asks"></tbody></table>
                 </div>
                 <div class="spread-info">
-                    <span id="ob-last-price" style="font-size: 1.1rem;">0.00</span>
-                    <span id="ob-spread" style="font-size: 0.8rem; color: var(--text-secondary);">Spread: -</span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span id="ob-last-price" style="font-size: 1.2rem; font-weight: bold;">0</span>
+                        <span id="ob-change-rate" style="font-size: 0.85rem;">+0.00%</span>
+                    </div>
+                    <div style="display: flex; gap: 12px; font-size: 0.75rem; color: var(--text-secondary);">
+                        <span id="ob-spread">Spread: -</span>
+                        <span id="ob-timestamp">--:--:--</span>
+                    </div>
                 </div>
                 <div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-start; overflow: hidden;">
                     <table class="orderbook-table"><tbody id="ob-bids"></tbody></table>
@@ -372,28 +378,60 @@
         <div class="panel bottom-panel">
             <div class="bottom-tabs">
                 <div class="bottom-tab active" onclick="setBottomTab('open')">미체결 주문 (Open Orders)</div>
-                <div class="bottom-tab" onclick="setBottomTab('history')">주문 내역 (History)</div>
+                <div class="bottom-tab" onclick="setBottomTab('history')">체결 내역 (Trade History)</div>
                 <div class="bottom-tab" onclick="setBottomTab('balance')">자산 (Assets)</div>
             </div>
+            
             <div class="order-list-container">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>시간</th>
-                            <th>종목</th>
-                            <th>유형</th>
-                            <th>방향</th>
-                            <th>가격</th>
-                            <th>주문수량</th>
-                            <th>체결수량</th>
-                            <th>상태</th>
-                            <th style="text-align: right;">관리</th>
-                        </tr>
-                    </thead>
-                    <tbody id="openOrdersTable">
-                        <!-- JS populated rows -->
-                    </tbody>
-                </table>
+                <!-- VIEW: Open Orders -->
+                <div id="view-open" style="display: block;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>시간</th>
+                                <th>종목</th>
+                                <th>유형</th>
+                                <th>방향</th>
+                                <th>가격</th>
+                                <th>주문수량</th>
+                                <th>체결수량</th>
+                                <th>상태</th>
+                                <th style="text-align: right;">관리</th>
+                            </tr>
+                        </thead>
+                        <tbody id="openOrdersTable">
+                            <!-- JS populated rows -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- VIEW: Trade History -->
+                <div id="view-history" style="display: none;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>시간</th>
+                                <th>종목</th>
+                                <th>방향</th>
+                                <th>유형</th>
+                                <th>체결가</th>
+                                <th>체결량</th>
+                                <th>총액(Cost)</th>
+                                <th>OrderID</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tradeHistoryTable">
+                            <!-- JS populated rows -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- VIEW: Assets -->
+                <div id="view-balance" style="display: none;">
+                    <div style="padding: 20px; color: #888;">
+                        자산 정보 연동 준비중... (Supabase Balance)
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -426,7 +464,8 @@
             type: 'LIMIT', 
             interval: '1m',
             ws: null,
-            orders: [],
+            orders: [],       // Open Orders
+            tradeHistory: [], // Filled/History
             isConnected: false,
             candleTestInterval: null
         };
@@ -546,6 +585,7 @@
                 state.ws = new WebSocket(url);
             } catch(e) {
                 adminLog('WS Error: ' + e.message, 'err');
+                retryConnection();
                 return;
             }
 
@@ -553,6 +593,7 @@
                 state.isConnected = true;
                 updateStatus(true);
                 adminLog('WS Connected', 'in');
+                startHeartbeat();
                 
                 // Subscribe Main
                 const subSym = document.getElementById('subSymbol').value;
@@ -575,11 +616,43 @@
                 state.isConnected = false;
                 updateStatus(false);
                 adminLog('WS Disconnected', 'err');
+                stopHeartbeat();
+                if (isLoggedIn) {
+                   retryConnection();
+                }
             };
             
             state.ws.onerror = (err) => {
                 adminLog('WS Error occurred', 'err');
+                // onclose will be called after onerror, so retries happen there
             };
+        }
+
+        let reconnectTimeout = null;
+        function retryConnection() {
+            if (reconnectTimeout) clearTimeout(reconnectTimeout);
+            adminLog('Reconnecting in 3s...', 'warn');
+            reconnectTimeout = setTimeout(() => {
+                connectWS();
+            }, 3000);
+        }
+
+        let heartbeatInterval = null;
+        function startHeartbeat() {
+            stopHeartbeat();
+            heartbeatInterval = setInterval(() => {
+                if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+                    // Send a ping to keep connection alive
+                    state.ws.send(JSON.stringify({ action: 'ping' }));
+                }
+            }, 30000); // 30 seconds
+        }
+
+        function stopHeartbeat() {
+            if (heartbeatInterval) {
+                clearInterval(heartbeatInterval);
+                heartbeatInterval = null;
+            }
         }
 
         function subscribeSymbol() {
@@ -626,11 +699,18 @@
                 return;
             }
             
-            // Order Status Update (Private) - Engine uses 'event', Lambda uses 'type'
+            // Order Status Update (Private)
             if (msg.type === 'ORDER_STATUS' || msg.event === 'ORDER_STATUS') {
-                const data = msg.data || msg;  // Lambda wraps in data, Engine sends flat
+                const data = msg.data || msg;
                 updateOrderLocally(data);
-                adminLog(`📋 Order: ${data.status} #${data.order_id?.substring(0, 15) || 'unknown'}`, 'in');
+                
+                // Log only important changes
+                if(data.status === 'FILLED') {
+                    // For specific fill event logging
+                    // adminLog(`FILLED: ${data.filled_qty} @ ${data.filled_price}`, 'in');
+                } else {
+                    adminLog(`📋 Order: ${data.status} #${data.order_id?.substring(0, 15) || 'unknown'}`, 'in');
+                }
                 return;
             }
             
@@ -664,22 +744,80 @@
             }
         }
 
+        // --- UI Utils ---
+        function setBottomTab(name) {
+            // Update Tab UI
+            document.querySelectorAll('.bottom-tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // Toggle Views
+            document.getElementById('view-open').style.display = (name === 'open') ? 'block' : 'none';
+            document.getElementById('view-history').style.display = (name === 'history') ? 'block' : 'none';
+            document.getElementById('view-balance').style.display = (name === 'balance') ? 'block' : 'none';
+        }
+
         // --- Order Logic ---
         function updateOrderLocally(orderData) {
-            const idx = state.orders.findIndex(o => o.order_id === orderData.order_id);
-            if (idx >= 0) {
-                if (orderData.status === 'CANCELLED' || orderData.status === 'REJECTED') {
-                    state.orders.splice(idx, 1);
-                } else {
-                    state.orders[idx] = { ...state.orders[idx], ...orderData };
+            // Handle FILLED separately for History
+            if (orderData.status === 'FILLED') {
+                // Add to history
+                state.tradeHistory.unshift({
+                    timestamp: orderData.timestamp || Date.now(),
+                    symbol: orderData.symbol,
+                    side: orderData.side,
+                    type: orderData.type,
+                    price: orderData.filled_price,
+                    quantity: orderData.filled_qty,
+                    cost: (orderData.filled_qty * orderData.filled_price),
+                    order_id: orderData.order_id
+                });
+                renderTradeHistory();
+                
+                // Update Open Orders (Accumulate fill)
+                const idx = state.orders.findIndex(o => o.order_id === orderData.order_id);
+                if (idx >= 0) {
+                     const existing = state.orders[idx];
+                     existing.filled_qty = (existing.filled_qty || 0) + orderData.filled_qty;
+                     
+                     // Check if fully filled (if we know original qty)
+                     if (existing.quantity > 0 && existing.filled_qty >= existing.quantity) {
+                         state.orders.splice(idx, 1); // Remove from Open
+                     } else {
+                         state.orders[idx] = existing; // Update
+                     }
                 }
-            } else {
-                if (orderData.status === 'ACCEPTED' || orderData.status === 'OPEN') {
-                    if(!orderData.filled_qty) orderData.filled_qty = 0;
-                    state.orders.unshift(orderData);
-                }
+            } 
+            else if (orderData.status === 'ACCEPTED') {
+                 // Add to Open Orders
+                 state.orders.unshift({
+                     ...orderData,
+                     filled_qty: 0 // Reset fill for new order
+                 });
             }
+            else if (orderData.status === 'CANCELLED' || orderData.status === 'REJECTED') {
+                 // Remove from Open Orders
+                 const idx = state.orders.findIndex(o => o.order_id === orderData.order_id);
+                 if (idx >= 0) state.orders.splice(idx, 1);
+            }
+            
             renderOpenOrders();
+        }
+
+        function renderTradeHistory() {
+            const tbody = document.getElementById('tradeHistoryTable');
+            if(!tbody) return;
+            tbody.innerHTML = state.tradeHistory.map(t => `
+                <tr>
+                    <td>${new Date(t.timestamp).toLocaleTimeString()}</td>
+                    <td>${t.symbol}</td>
+                    <td class="${t.side==='BUY'?'price-up':'price-down'}">${t.side}</td>
+                    <td>${t.type}</td>
+                    <td>${t.price}</td>
+                    <td>${t.quantity}</td>
+                    <td>${t.cost.toLocaleString()}</td>
+                    <td style="font-size:0.75rem; color:#666;">${t.order_id.substring(0,8)}...</td>
+                </tr>
+            `).join('');
         }
 
         function handleFill(fillData) {
@@ -871,10 +1009,7 @@
         }
 
         // --- UI Utils ---
-        function setBottomTab(name) {
-            document.querySelectorAll('.bottom-tab').forEach(t => t.classList.remove('active'));
-            event.target.classList.add('active');
-        }
+        /* setBottomTab moved to top of Order Logic for grouping */
 
         function setTimeframe(tf) {
             state.interval = tf;
@@ -984,6 +1119,11 @@
             
             if(!rawTime) return;
             
+            // Detect Milliseconds vs Seconds (Epoch 2025 is ~1.7e9 sec, ~1.7e12 ms)
+            if (rawTime > 1000000000000) {
+                rawTime = Math.floor(rawTime / 1000);
+            }
+            
             // Normalize epoch to interval boundary
             const alignedTime = Math.floor(rawTime / intervalSeconds) * intervalSeconds;
             
@@ -1047,9 +1187,24 @@
              const asks = (data.a || []).slice(0,10).reverse();
              const bids = (data.b || []).slice(0,10);
              
-             // Update last price if available
-             if(data.c) {
-                 document.getElementById('ob-last-price').innerText = parseFloat(data.c).toFixed(2);
+             // Update last price (p = price, c = change rate)
+             if(data.p) {
+                 document.getElementById('ob-last-price').innerText = parseFloat(data.p).toLocaleString();
+             }
+             
+             // Update change rate display
+             const changeEl = document.getElementById('ob-change-rate');
+             if(changeEl && data.c !== undefined) {
+                 const changeVal = parseFloat(data.c);
+                 changeEl.innerText = `${changeVal >= 0 ? '+' : ''}${changeVal.toFixed(2)}%`;
+                 changeEl.className = changeVal >= 0 ? 'price-up' : 'price-down';
+             }
+             
+             // Update timestamp display (convert ms to readable time)
+             const timeEl = document.getElementById('ob-timestamp');
+             if(timeEl && data.t) {
+                 const ts = data.t > 1000000000000 ? data.t : data.t * 1000; // Handle sec vs ms
+                 timeEl.innerText = new Date(ts).toLocaleTimeString();
              }
             
              // Calculate spread

@@ -21,6 +21,12 @@ struct NotificationMessage {
     std::string user_id;
     std::string order_id;
     std::string symbol;
+    std::string side;        // BUY, SELL
+    uint64_t    price;
+    uint64_t    quantity;
+    std::string order_type;  // LIMIT, MARKET
+    uint64_t    filled_qty;  // 이번 체결 수량 (FILL일 경우)
+    uint64_t    filled_price;// 이번 체결 가격 (FILL일 경우)
     std::string status;      // ACCEPTED, REJECTED, FILLED, CANCELLED, PARTIAL_FILL
     std::string reason;      // 거부/취소 사유 (선택)
     int64_t timestamp;
@@ -49,6 +55,12 @@ public:
     void sendOrderStatus(const std::string& user_id,
                          const std::string& order_id,
                          const std::string& symbol,
+                         const std::string& side,
+                         uint64_t price,
+                         uint64_t quantity,
+                         const std::string& order_type,
+                         uint64_t filled_qty,
+                         uint64_t filled_price,
                          const std::string& status,
                          const std::string& reason = "");
 

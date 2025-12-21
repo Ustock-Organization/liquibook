@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "docs/CACHE_KEY_REFERENCE.md",
+                "file": "AWS_ARCHITECTURE.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "CACHE_KEY_REFERENCE"
+              "title": "AWS_ARCHITECTURE"
             }
           }
         ]
@@ -185,17 +185,17 @@
   },
   "active": "2df01f10dcd40573",
   "lastOpenFiles": [
-    "wrapper/src/notification_client.cpp",
-    "wrapper/include/notification_client.h",
-    "lambda/Supernoba-order-status-handler.zip",
-    "lambda/Supernoba-order-status-handler/node_modules/@smithy/util-endpoints/dist-cjs/index.js",
-    "lambda/Supernoba-order-status-handler/node_modules/@smithy/util-endpoints/dist-cjs",
-    "lambda/Supernoba-order-status-handler/node_modules/@smithy/types/dist-cjs/index.js",
-    "lambda/Supernoba-order-status-handler/node_modules/@smithy/types/dist-cjs",
-    "lambda/Supernoba-order-status-handler/node_modules/@aws-sdk/types/dist-cjs/index.js",
-    "lambda/Supernoba-order-status-handler/node_modules/@aws-sdk/types/dist-cjs",
-    "lambda/Supernoba-order-status-handler/node_modules/@aws-crypto/util/src/uint32ArrayFrom.ts",
-    "lambda/Supernoba-order-status-handler/node_modules/@aws-crypto/util/src/numToUint8.ts",
+    "docs/CACHE_KEY_REFERENCE.md",
+    "lambda/Supernoba-order-router/node_modules/@smithy/smithy-client/dist-es/extensions/index.js",
+    "lambda/Supernoba-order-router/node_modules/@smithy/smithy-client/dist-es/extensions/retry.js",
+    "lambda/Supernoba-order-router/node_modules/@smithy/smithy-client/dist-es/extensions/defaultExtensionConfiguration.js",
+    "lambda/Supernoba-order-router/node_modules/@smithy/smithy-client/dist-es/extensions/checksum.js",
+    "lambda/Supernoba-order-router/node_modules/@smithy/smithy-client/dist-es/serde-json.js",
+    "lambda/Supernoba-order-router/node_modules/@smithy/smithy-client/dist-es/ser-utils.js",
+    "lambda/Supernoba-order-router/node_modules/@smithy/smithy-client/dist-es/schemaLogFilter.js",
+    "lambda/Supernoba-order-router/node_modules/@smithy/smithy-client/dist-es/resolve-path.js",
+    "lambda/Supernoba-order-router/node_modules/@smithy/smithy-client/dist-es/object-mapping.js",
+    "lambda/Supernoba-order-router/node_modules/@smithy/smithy-client/dist-es/NoOpLogger.js",
     "lambda/Supernoba-order-status-handler/node_modules/@smithy/smithy-client/README.md",
     "lambda/Supernoba-order-status-handler/node_modules/@aws-crypto/util/README.md",
     "lambda/Supernoba-order-status-handler/node_modules/@smithy/credential-provider-imds/README.md",
@@ -206,7 +206,6 @@
     "lambda/Supernoba-order-status-handler/node_modules/@aws-sdk/credential-provider-env/README.md",
     "docs/CANDLE_ARCHITECTURE.md",
     "docs/CLIENT_DATA_FLOW.md",
-    "docs/CACHE_KEY_REFERENCE.md",
     "test/auto_tester/node_modules/ws/README.md",
     "lambda/Supernoba-order-router/node_modules/@aws-sdk/core/README.md",
     "lambda/Supernoba-order-router/node_modules/@aws-sdk/util-user-agent-node/README.md",
