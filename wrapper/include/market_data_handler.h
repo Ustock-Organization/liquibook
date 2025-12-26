@@ -15,7 +15,6 @@
 namespace aws_wrapper {
 
 class RedisClient;          // forward declaration
-class DynamoDBClient;       // forward declaration
 class NotificationClient;   // forward declaration
 
 // Depth levels: 10 bid + 10 ask
@@ -42,7 +41,6 @@ class MarketDataHandler
 {
 public:
     explicit MarketDataHandler(IProducer* producer, RedisClient* redis = nullptr,
-                                DynamoDBClient* dynamodb = nullptr,
                                 NotificationClient* notifier = nullptr);
     
     // === OrderListener ===
@@ -80,7 +78,6 @@ public:
 private:
     IProducer* producer_;
     RedisClient* redis_;
-    DynamoDBClient* dynamodb_;
     NotificationClient* notifier_;
     std::unordered_map<std::string, DayData> symbol_day_data_;
     

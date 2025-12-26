@@ -51,10 +51,8 @@ export VALKEY_PORT="6379"
 export RDS_HOST="supernoba-rdb1.cluster-cyxfcbnpfoci.ap-northeast-2.rds.amazonaws.com"
 export RDS_PORT="5432"
 export RDS_DBNAME="postgres"
-# RDS 자격 증명 (Secrets Manager에서 가져오거나 환경변수로 설정)
-# 실제 배포 시 aws secretsmanager get-secret-value 사용 권장
-export RDS_USER="${RDS_USER:-postgres}"
-export RDS_PASSWORD="${RDS_PASSWORD:-}"
+export RDS_USER="njg7194"
+export RDS_PASSWORD='l(wk(9slG[|56lINkX]OP1m4sv2O'
 
 # 폴링 간격 (ms)
 export POLL_INTERVAL_MS="10"

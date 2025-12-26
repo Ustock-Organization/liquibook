@@ -8,16 +8,13 @@
 #include <nlohmann/json.hpp>
 #include <cmath>
 
-#ifdef USE_KINESIS
-#include "dynamodb_client.h"
-#endif
+
 
 namespace aws_wrapper {
 
-MarketDataHandler::MarketDataHandler(IProducer* producer, RedisClient* redis, DynamoDBClient* dynamodb, NotificationClient* notifier)
-    : producer_(producer), redis_(redis), dynamodb_(dynamodb), notifier_(notifier) {
+MarketDataHandler::MarketDataHandler(IProducer* producer, RedisClient* redis, NotificationClient* notifier)
+    : producer_(producer), redis_(redis), notifier_(notifier) {
     Logger::info("MarketDataHandler initialized, Redis:", redis_ ? "connected" : "none",
-                 "DynamoDB:", dynamodb_ ? "connected" : "none",
                  "Notifier:", notifier_ ? "enabled" : "disabled");
 }
 

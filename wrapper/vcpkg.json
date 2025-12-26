@@ -1,7 +1,7 @@
 {
   "name": "liquibook-aws-wrapper",
   "version": "1.0.0",
-  "description": "C++ AWS wrapper for Liquibook matching engine (Kinesis + DynamoDB)",
+  "description": "C++ AWS wrapper for Liquibook matching engine (Kinesis)",
   "dependencies": [
     "grpc",
     "protobuf",
@@ -12,7 +12,7 @@
     "openssl",
     {
       "name": "aws-sdk-cpp",
-      "features": ["kinesis", "dynamodb", "apigatewaymanagementapi"]
+      "features": ["kinesis", "apigatewaymanagementapi"]
     }
   ]
 }
