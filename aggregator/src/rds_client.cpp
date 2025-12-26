@@ -51,24 +51,44 @@ void RdsClient::disconnect() {
 bool RdsClient::ensure_partition(const std::string& symbol) {
     if (!connected_ || !conn_) return false;
     
-    std::string sql = "SELECT create_candle_partition_if_not_exists($1)";
-    const char* params[1] = {symbol.c_str()};
+    // 소문자로 변환
+    std::string lower_symbol = symbol;
+    for (auto& c : lower_symbol) c = std::tolower(c);
     
-    PGresult* res = PQexecParams(conn_, sql.c_str(), 1, nullptr, params, nullptr, nullptr, 0);
+    // 파티션 존재 확인
+    std::string check_sql = "SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'candle_history_" + lower_symbol + "'";
+    PGresult* check_res = PQexec(conn_, check_sql.c_str());
     
-    if (PQresultStatus(res) != PGRES_TUPLES_OK && PQresultStatus(res) != PGRES_COMMAND_OK) {
+    if (PQresultStatus(check_res) == PGRES_TUPLES_OK && PQntuples(check_res) > 0) {
+        // 이미 존재함 - 생성 스킵
+        PQclear(check_res);
+        return true;
+    }
+    PQclear(check_res);
+    
+    // 파티션 생성 (소문자)
+    std::string create_sql = "CREATE TABLE IF NOT EXISTS public.candle_history_" + lower_symbol + 
+                             " PARTITION OF public.candle_history FOR VALUES IN ('" + lower_symbol + "')";
+    PGresult* res = PQexec(conn_, create_sql.c_str());
+    
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
         Logger::error("RDS partition creation failed:", PQerrorMessage(conn_));
         PQclear(res);
         return false;
     }
     
     PQclear(res);
+    Logger::info("Created partition: candle_history_", lower_symbol);
     return true;
 }
 
 bool RdsClient::put_candle(const std::string& symbol, const std::string& interval, 
                            const Candle& candle) {
     if (!connected_ || !conn_) return false;
+    
+    // 소문자로 변환 (파티션 키와 일치)
+    std::string lower_symbol = symbol;
+    for (auto& c : lower_symbol) c = std::tolower(c);
     
     std::string sql = R"(
         INSERT INTO candle_history (symbol, interval, time_epoch, time_ymdhm, open, high, low, close, volume)
@@ -88,7 +108,7 @@ bool RdsClient::put_candle(const std::string& symbol, const std::string& interva
     std::string volume_str = std::to_string(candle.volume);
     
     const char* params[9] = {
-        symbol.c_str(), interval.c_str(), epoch_str.c_str(), candle.time.c_str(),
+        lower_symbol.c_str(), interval.c_str(), epoch_str.c_str(), candle.time.c_str(),
         open_str.c_str(), high_str.c_str(), low_str.c_str(), close_str.c_str(), volume_str.c_str()
     };
     
