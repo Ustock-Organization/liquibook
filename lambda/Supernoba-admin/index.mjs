@@ -1,11 +1,11 @@
 // symbol-manager Lambda (Supernoba-admin)
-// Source of Truth: Supabase (symbols table)
+// Source of Truth: DynamoDB (supernoba-symbols table)
 // Cache: Redis (active:symbols, depth:*)
 
 import Redis from 'ioredis';
 import { createClient } from '@supabase/supabase-js';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { ScanCommand, DeleteCommand, DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import { ScanCommand, DeleteCommand, GetCommand, PutCommand, DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
 import pg from 'pg';
 const { Pool } = pg;
@@ -136,6 +136,7 @@ const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 const dynamodb = DynamoDBDocumentClient.from(
   new DynamoDBClient({ region: AWS_REGION })
 );
+const SYMBOLS_TABLE = process.env.SYMBOLS_TABLE || 'supernoba-symbols';
 
 const headers = {
   'Access-Control-Allow-Origin': '*',
@@ -295,37 +296,72 @@ export const handler = async (event) => {
            }
        }
     
+       // DynamoDB에서 조회
        const q = queryParams.q;
-       let query = supabase.from('symbols').select('*');
-       if (q) query = query.or(`symbol.ilike.%${q}%,name.ilike.%${q}%`);
+       const scanResult = await dynamodb.send(new ScanCommand({
+           TableName: SYMBOLS_TABLE
+       }));
        
-
+       let symbols = (scanResult.Items || []).map(item => ({
+           symbol: item.symbol,
+           name: item.name || item.symbol,
+           logo_url: item.logo_url || null,
+           status: item.status || 'ACTIVE',
+           base_asset: item.base_asset || item.symbol,
+           quote_asset: item.quote_asset || 'KRW'
+       }));
        
-       const { data: symbols, error } = await query;
-       if (error) throw error;
+       // 검색 필터링
+       if (q) {
+           const queryLower = q.toLowerCase();
+           symbols = symbols.filter(s => 
+               s.symbol.toLowerCase().includes(queryLower) || 
+               (s.name && s.name.toLowerCase().includes(queryLower))
+           );
+       }
        
        return {
            statusCode: 200, headers,
-           body: JSON.stringify({ symbols, count: symbols?.length || 0, source: 'supabase' })
+           body: JSON.stringify({ symbols, count: symbols?.length || 0, source: 'dynamodb' })
        };
     }
 
     // === GET /symbols/{symbol} ===
     if (method === 'GET' && symbolParam) {
-       const { data: symData } = await supabase.from('symbols').select('*').eq('symbol', symbolParam.toUpperCase()).single();
-       const exists = await valkey.sismember('active:symbols', symbolParam.toUpperCase());
+       const symbolUpper = symbolParam.toUpperCase();
+       const exists = await valkey.sismember('active:symbols', symbolUpper);
+       
+       // DynamoDB에서 조회
+       let symData = null;
+       try {
+           const result = await dynamodb.send(new GetCommand({
+               TableName: SYMBOLS_TABLE,
+               Key: { symbol: symbolUpper }
+           }));
+           symData = result.Item;
+       } catch (err) {
+           console.error('[GET /symbols/{symbol}] DynamoDB error:', err);
+       }
+       
        if (!exists && !symData) {
            return { statusCode: 404, headers, body: JSON.stringify({ error: 'Symbol not found' }) };
        }
+       
        const [ticker, depth] = await Promise.all([
-         valkey.get(`ticker:${symbolParam.toUpperCase()}`),
-         valkey.get(`depth:${symbolParam.toUpperCase()}`),
+         valkey.get(`ticker:${symbolUpper}`),
+         valkey.get(`depth:${symbolUpper}`),
        ]);
+       
        return {
            statusCode: 200, headers,
            body: JSON.stringify({
-               symbol: symbolParam.toUpperCase(),
-               meta: symData,
+               symbol: symbolUpper,
+               meta: symData ? {
+                   symbol: symData.symbol,
+                   name: symData.name || symData.symbol,
+                   logo_url: symData.logo_url || null,
+                   status: symData.status || 'ACTIVE'
+               } : null,
                active: !!exists,
                ticker: ticker ? JSON.parse(ticker) : null,
                depth: depth ? JSON.parse(depth) : null,
@@ -335,13 +371,20 @@ export const handler = async (event) => {
     
     // === POST /sync (Hydrate Redis) ===
     if (method === 'POST' && path.includes('sync')) {
-        const { data: allSymbols } = await supabase.from('symbols').select('symbol');
+        // DynamoDB에서 모든 활성 종목 조회
+        const scanResult = await dynamodb.send(new ScanCommand({
+            TableName: SYMBOLS_TABLE,
+            FilterExpression: '#status = :active',
+            ExpressionAttributeNames: { '#status': 'status' },
+            ExpressionAttributeValues: { ':active': 'ACTIVE' }
+        }));
+        
         let count = 0;
-        if (allSymbols?.length > 0) {
+        if (scanResult.Items && scanResult.Items.length > 0) {
             const pipeline = valkey.pipeline();
-            allSymbols.forEach(s => pipeline.sadd('active:symbols', s.symbol));
+            scanResult.Items.forEach(item => pipeline.sadd('active:symbols', item.symbol));
             await pipeline.exec();
-            count = allSymbols.length;
+            count = scanResult.Items.length;
         }
         return { statusCode: 200, headers, body: JSON.stringify({ message: 'Synced', count }) };
     }
@@ -410,11 +453,15 @@ export const handler = async (event) => {
             status: 'ACTIVE'
         };
         
-        const { error: symErr } = await supabaseAdmin.from('symbols').upsert(newSymbol);
-        
-        if (symErr) {
-            console.error('[APPROVE] Symbol Insert Error:', symErr);
-            return { statusCode: 500, headers, body: JSON.stringify({ error: 'Failed to insert symbol', details: symErr }) };
+        // DynamoDB에 저장
+        try {
+            await dynamodb.send(new PutCommand({
+                TableName: SYMBOLS_TABLE,
+                Item: newSymbol
+            }));
+        } catch (err) {
+            console.error('[APPROVE] DynamoDB Insert Error:', err);
+            return { statusCode: 500, headers, body: JSON.stringify({ error: 'Failed to insert symbol', details: err.message }) };
         }
 
         // 3. Add to Redis
@@ -495,12 +542,18 @@ export const handler = async (event) => {
       
       const newSymbol = {
           symbol: symbol.toUpperCase(),
-          name: name || symbol, base_asset: symbol.toUpperCase(), quote_asset: 'BOLT', logo_url, status: 'ACTIVE'
+          name: name || symbol, 
+          base_asset: symbol.toUpperCase(), 
+          quote_asset: 'BOLT', 
+          logo_url, 
+          status: 'ACTIVE'
       };
       
-      const { error } = await supabaseAdmin.from('symbols').upsert(newSymbol);
-      if (error) throw error;
-      
+      // DynamoDB에 저장
+      await dynamodb.send(new PutCommand({
+          TableName: SYMBOLS_TABLE,
+          Item: newSymbol
+      }));
       
       await valkey.sadd('active:symbols', newSymbol.symbol);
       
@@ -525,7 +578,11 @@ export const handler = async (event) => {
         }
 
         if (targetSymbol) {
-             await supabaseAdmin.from('symbols').delete().eq('symbol', targetSymbol.toUpperCase());
+             // DynamoDB에서 삭제
+             await dynamodb.send(new DeleteCommand({
+                 TableName: SYMBOLS_TABLE,
+                 Key: { symbol: targetSymbol.toUpperCase() }
+             }));
              await valkey.srem('active:symbols', targetSymbol.toUpperCase());
              return { statusCode: 200, headers, body: JSON.stringify({ message: 'Deleted', symbol: targetSymbol }) };
         }

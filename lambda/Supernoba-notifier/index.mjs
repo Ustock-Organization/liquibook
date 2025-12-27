@@ -28,7 +28,7 @@ redis.on('error', (err) => console.error('Redis Error:', err.message));
 
 
 export const handler = async (event) => {
-    console.log(`Received ${event.Records.length} records.`);
+    console.log(`[notifier] Received ${event.Records.length} records.`);
     
     // Batch process records
     const promises = event.Records.map(async (record) => {
@@ -37,22 +37,31 @@ export const handler = async (event) => {
             const payloadStr = Buffer.from(record.kinesis.data, 'base64').toString('utf-8');
             const data = JSON.parse(payloadStr);
             
+            console.log(`[notifier] Parsed data:`, JSON.stringify(data));
+            
             // We only care about FILL events for now (Engine publishes only Fills via publishFill)
             // Format from KinesisProducer::publishFill:
             // { event: "FILL", symbol, trade_id, buyer: {user_id, order_id, fully_filled}, seller: {...}, quantity, price, timestamp }
             
-            if (data.event !== 'FILL') return;
+            if (data.event !== 'FILL') {
+                console.log(`[notifier] Skipping non-FILL event: ${data.event}`);
+                return;
+            }
+
+            console.log(`[notifier] Processing FILL event: buyer_fully_filled=${data.buyer?.fully_filled}, seller_fully_filled=${data.seller?.fully_filled}`);
 
             // 전량 체결된 주문만 알림 전송 (부분 체결은 엔진에서 직접 알림)
             if (data.buyer?.fully_filled === true) {
+                console.log(`[notifier] Buyer fully filled, notifying user ${data.buyer.user_id}`);
                 await notifyUser(data.buyer.user_id, data, 'BUY');
             }
             if (data.seller?.fully_filled === true) {
+                console.log(`[notifier] Seller fully filled, notifying user ${data.seller.user_id}`);
                 await notifyUser(data.seller.user_id, data, 'SELL');
             }
             
         } catch (err) {
-            console.error('Failed to process record:', err);
+            console.error('[notifier] Failed to process record:', err);
         }
     });
 
@@ -66,7 +75,12 @@ async function notifyUser(userId, fillData, side) {
     const key = `user:${userId}:connections`;
     const connections = await redis.smembers(key);
     
-    if (!connections || connections.length === 0) return;
+    console.log(`[notifier] Notifying user ${userId} (side: ${side}), connections: ${connections.length}`);
+    
+    if (!connections || connections.length === 0) {
+        console.log(`[notifier] No connections found for user ${userId}`);
+        return;
+    }
 
     // 2. Construct Message (Frontend Format)
     // The frontend expects "ORDER_STATUS" type.
@@ -93,6 +107,8 @@ async function notifyUser(userId, fillData, side) {
         }
     };
     
+    console.log(`[notifier] Message payload:`, JSON.stringify(message));
+    
     const msgString = JSON.stringify(message);
     const msgBuffer = Buffer.from(msgString);
 
@@ -104,16 +120,17 @@ async function notifyUser(userId, fillData, side) {
                 Data: msgBuffer
             });
             await apiClient.send(command);
+            console.log(`[notifier] Sent to connection ${connId}`);
         } catch (err) {
             if (err.statusCode === 410) { // Gone
-                console.log(`Connection ${connId} gone, removing.`);
+                console.log(`[notifier] Connection ${connId} gone, removing.`);
                 await redis.srem(key, connId);
             } else {
-                console.error(`Failed to send to ${connId}:`, err.message);
+                console.error(`[notifier] Failed to send to ${connId}:`, err.message);
             }
         }
     });
     
     await Promise.all(sendPromises);
-    console.log(`Notified user ${userId} on ${connections.length} connections.`);
+    console.log(`[notifier] Notified user ${userId} on ${connections.length} connections.`);
 }

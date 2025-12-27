@@ -1,11 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, QueryCommand, GetCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 
 // DynamoDB Client
 const dynamoClient = new DynamoDBClient({ region: process.env.AWS_REGION || 'ap-northeast-2' });
 const ddb = DynamoDBDocumentClient.from(dynamoClient);
 const ORDERS_TABLE = process.env.ORDERS_TABLE || 'supernoba-orders';
+const SYMBOLS_TABLE = process.env.SYMBOLS_TABLE || 'supernoba-symbols';
+const HOLDINGS_TABLE = process.env.HOLDINGS_TABLE || 'supernoba-holdings';
 
 // === Configuration ===
 const HEADERS = {
@@ -38,8 +40,26 @@ export const handler = async (event) => {
         return { statusCode: 200, headers: HEADERS, body: '' };
     }
 
-    const { httpMethod, path, queryStringParameters } = event;
+    const { httpMethod, path, queryStringParameters, pathParameters } = event;
     const userId = queryStringParameters?.userId;
+    const symbolParam = pathParameters?.symbol || (path.includes('/symbols/') ? path.split('/symbols/')[1] : null);
+
+    // symbols 엔드포인트는 userId 불필요
+    if (path.includes('/symbols')) {
+        try {
+            if (httpMethod === 'GET') {
+                if (symbolParam) {
+                    return await getSymbolInfo(symbolParam);
+                } else {
+                    return await getAllSymbols();
+                }
+            }
+            return { statusCode: 405, headers: HEADERS, body: JSON.stringify({ error: "Method Not Allowed" }) };
+        } catch (error) {
+            console.error("Handler Error:", error);
+            return { statusCode: 500, headers: HEADERS, body: JSON.stringify({ error: error.message }) };
+        }
+    }
 
     if (!userId) {
         return {
@@ -80,17 +100,19 @@ export const handler = async (event) => {
 };
 
 async function getUserAssets(supabase, userId) {
-    // 1. Fetch all wallets for user
+    // 1. Fetch BOLT wallet from Supabase (잔고만)
     const { data: wallets, error } = await supabase
         .from('wallets')
         .select('*')
-        .eq('user_id', userId);
+        .eq('user_id', userId)
+        .eq('currency', 'BOLT');
 
     if (error) throw error;
 
     // 2. Initialize if empty (Auto-Init Strategy)
+    let balance = { available: 0, locked: 0, total: 0, currency: 'BOLT' };
     if (!wallets || wallets.length === 0) {
-        console.log(`[UserId: ${userId}] No wallets found. Initializing default BOLT wallet.`);
+        console.log(`[UserId: ${userId}] No BOLT wallet found. Initializing default BOLT wallet.`);
         const { data: newWallet, error: initError } = await supabase
             .from('wallets')
             .insert({
@@ -107,52 +129,34 @@ async function getUserAssets(supabase, userId) {
              throw initError;
         }
         
-        return {
-            statusCode: 200,
-            headers: HEADERS,
-            body: JSON.stringify({
-                balance: { 
-                    available: newWallet.available, 
-                    locked: newWallet.locked, 
-                    total: newWallet.available + newWallet.locked, 
-                    currency: 'BOLT' 
-                },
-                holdings: [] 
-            })
+        balance = {
+            available: Number(newWallet.available),
+            locked: Number(newWallet.locked),
+            total: Number(newWallet.available) + Number(newWallet.locked),
+            currency: 'BOLT'
+        };
+    } else {
+        const w = wallets[0];
+        balance = {
+            available: Number(w.available),
+            locked: Number(w.locked),
+            total: Number(w.available) + Number(w.locked),
+            currency: 'BOLT'
         };
     }
 
-    // 3. Format Response
-    let balance = { available: 0, locked: 0, total: 0, currency: 'BOLT' };
-    let holdings = [];
+    // 3. Fetch holdings from DynamoDB
+    const holdingsResult = await ddb.send(new QueryCommand({
+        TableName: HOLDINGS_TABLE,
+        KeyConditionExpression: 'user_id = :uid',
+        ExpressionAttributeValues: { ':uid': userId }
+    }));
 
-    wallets.forEach(w => {
-        const total = Number(w.available) + Number(w.locked);
-        if (w.currency === 'BOLT') {
-            balance = {
-                available: Number(w.available),
-                locked: Number(w.locked),
-                total: total,
-                currency: 'KRW'
-            };
-        } else {
-            holdings.push({
-                symbol: w.currency,
-                quantity: total, // For simplicity in UI, show Total Qty? Or Available?
-                // Frontend 'Info.js' expects 'quantity'
-                // Let's verify what UI expects. Usually Available + Locked.
-                available: Number(w.available),
-                locked: Number(w.locked),
-                avgPrice: 0,     // Supabase doesn't have avgPrice in 'wallets'. Need 'positions' table? 
-                                 // For now, return 0. (AvgPrice needs a separate table or calculation)
-                currentPrice: 0, 
-                valuation: 0     
-            });
-        }
-    });
-    
-    // Compatibility: Map 'holdings' quantity to total
-    holdings = holdings.map(h => ({ ...h, quantity: h.available + h.locked }));
+    const holdings = (holdingsResult.Items || []).map(item => ({
+        symbol: item.symbol,
+        quantity: Number(item.quantity || 0),
+        avgPrice: Number(item.avgPrice || 0)
+    }));
 
     return {
         statusCode: 200,
@@ -173,6 +177,7 @@ async function getOrderHistory(userId) {
     
     const orders = (result.Items || []).map(item => ({
         id: item.order_id,
+        order_id: item.order_id, // WebSocket과 호환성을 위해 추가
         user_id: item.user_id,
         symbol: item.symbol,
         side: item.side,
@@ -182,7 +187,8 @@ async function getOrderHistory(userId) {
         filled_qty: item.filled_qty || 0,
         status: item.status,
         created_at: item.created_at,
-        updated_at: item.updated_at
+        updated_at: item.updated_at,
+        timestamp: item.created_at // WebSocket과 호환성을 위해 추가
     }));
     
     return {
@@ -221,7 +227,8 @@ async function getTradeHistory(userId) {
             filled_qty: item.filled_qty || item.quantity,
             status: item.status,
             created_at: item.created_at,
-            updated_at: item.updated_at
+            updated_at: item.updated_at,
+            timestamp: item.updated_at || item.created_at // 체결 시간으로 updated_at 사용
         }));
         
         return {
@@ -235,6 +242,74 @@ async function getTradeHistory(userId) {
             statusCode: 500,
             headers: HEADERS,
             body: JSON.stringify({ error: error.message, trades: [] })
+        };
+    }
+}
+
+// DynamoDB에서 종목 정보 조회
+async function getSymbolInfo(symbol) {
+    try {
+        const result = await ddb.send(new GetCommand({
+            TableName: SYMBOLS_TABLE,
+            Key: { symbol: symbol.toUpperCase() }
+        }));
+        
+        if (!result.Item) {
+            return {
+                statusCode: 404,
+                headers: HEADERS,
+                body: JSON.stringify({ error: 'Symbol not found' })
+            };
+        }
+        
+        return {
+            statusCode: 200,
+            headers: HEADERS,
+            body: JSON.stringify({
+                symbol: result.Item.symbol,
+                name: result.Item.name || result.Item.symbol,
+                logo_url: result.Item.logo_url || null,
+                status: result.Item.status || 'ACTIVE'
+            })
+        };
+    } catch (error) {
+        console.error("[asset-handler] getSymbolInfo error:", error);
+        return {
+            statusCode: 500,
+            headers: HEADERS,
+            body: JSON.stringify({ error: error.message })
+        };
+    }
+}
+
+// 모든 활성 종목 조회 (DynamoDB에서 조회)
+async function getAllSymbols() {
+    try {
+        const result = await ddb.send(new ScanCommand({
+            TableName: SYMBOLS_TABLE,
+            FilterExpression: '#status = :active',
+            ExpressionAttributeNames: { '#status': 'status' },
+            ExpressionAttributeValues: { ':active': 'ACTIVE' }
+        }));
+        
+        const symbols = (result.Items || []).map(item => ({
+            symbol: item.symbol,
+            name: item.name || item.symbol,
+            logo_url: item.logo_url || null,
+            status: item.status || 'ACTIVE'
+        }));
+        
+        return {
+            statusCode: 200,
+            headers: HEADERS,
+            body: JSON.stringify({ symbols })
+        };
+    } catch (error) {
+        console.error("[asset-handler] getAllSymbols error:", error);
+        return {
+            statusCode: 500,
+            headers: HEADERS,
+            body: JSON.stringify({ error: error.message })
         };
     }
 }

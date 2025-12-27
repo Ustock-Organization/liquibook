@@ -58,16 +58,21 @@ void KinesisProducer::publishFill(const std::string& symbol,
     j["event"] = "FILL";
     j["symbol"] = symbol;
     j["trade_id"] = order_id + "_" + matched_order_id;
-    j["buyer"] = {
-        {"order_id", order_id},
-        {"user_id", buyer_id},
-        {"fully_filled", buyer_fully_filled}
-    };
-    j["seller"] = {
-        {"order_id", matched_order_id},
-        {"user_id", seller_id},
-        {"fully_filled", seller_fully_filled}
-    };
+    
+    // buyer 객체 명시적으로 생성
+    nlohmann::json buyer_obj;
+    buyer_obj["order_id"] = order_id;
+    buyer_obj["user_id"] = buyer_id;
+    buyer_obj["fully_filled"] = buyer_fully_filled;
+    j["buyer"] = buyer_obj;
+    
+    // seller 객체 명시적으로 생성
+    nlohmann::json seller_obj;
+    seller_obj["order_id"] = matched_order_id;
+    seller_obj["user_id"] = seller_id;
+    seller_obj["fully_filled"] = seller_fully_filled;
+    j["seller"] = seller_obj;
+    
     j["quantity"] = qty;
     j["price"] = price;
     j["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
