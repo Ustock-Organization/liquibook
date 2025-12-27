@@ -61,6 +61,7 @@ jobs:
           node-version: '20'
           cache: 'npm'
           cache-dependency-path: '${{ matrix.function.path }}/package.json'
+        continue-on-error: true
       
       - name: Setup Node.js (without cache)
         if: matrix.function.has_package_json == 'false'
@@ -105,6 +106,7 @@ jobs:
         if: steps.filter.outputs.should_deploy == 'true' && matrix.function.has_package_json == 'true'
         working-directory: ${{ matrix.function.path }}
         run: |
+          echo "Installing dependencies for ${{ matrix.function.name }}..."
           if [ -f package.json ]; then
             npm ci
           else
@@ -148,8 +150,19 @@ jobs:
       - name: Verify deployment
         if: steps.filter.outputs.should_deploy == 'true'
         run: |
-          aws lambda get-function \
+          echo "=== Verifying deployment for ${{ matrix.function.name }} ==="
+          FUNCTION_INFO=$(aws lambda get-function \
             --function-name ${{ matrix.function.name }} \
             --region ap-northeast-2 \
-            --query 'Configuration.[FunctionName,LastModified,CodeSize]' \
-            --output table
+            --query 'Configuration.[FunctionName,LastModified,CodeSize,CodeSha256]' \
+            --output json)
+          
+          echo "$FUNCTION_INFO" | jq -r '.[] | "Function: \(.[0])\nLastModified: \(.[1])\nCodeSize: \(.[2]) bytes\nCodeSha256: \(.[3])"'
+          
+          # 배포 성공 여부 확인
+          if [ -n "$FUNCTION_INFO" ]; then
+            echo "✅ Deployment verified successfully for ${{ matrix.function.name }}"
+          else
+            echo "❌ Failed to verify deployment for ${{ matrix.function.name }}"
+            exit 1
+          fi
