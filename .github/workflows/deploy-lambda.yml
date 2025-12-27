@@ -21,24 +21,34 @@ jobs:
         function:
           - name: Supernoba-admin
             path: liquibook/lambda/Supernoba-admin
+            has_package_json: 'true'
           - name: Supernoba-order-router
             path: liquibook/lambda/Supernoba-order-router
+            has_package_json: 'true'
           - name: Supernoba-asset-handler
             path: liquibook/lambda/Supernoba-asset-handler
+            has_package_json: 'true'
           - name: Supernoba-fill-processor
             path: liquibook/lambda/Supernoba-fill-processor
+            has_package_json: 'true'
           - name: Supernoba-history-saver
             path: liquibook/lambda/Supernoba-history-saver
+            has_package_json: 'true'
           - name: Supernoba-notifier
             path: liquibook/lambda/Supernoba-notifier
+            has_package_json: 'true'
           - name: Supernoba-chart-data-handler
             path: liquibook/lambda/Supernoba-chart-data-handler
+            has_package_json: 'true'
           - name: Supernoba-connect-handler
             path: liquibook/lambda/Supernoba-connect-handler
+            has_package_json: 'true'
           - name: Supernoba-subscribe-handler
             path: liquibook/lambda/Supernoba-subscribe-handler
+            has_package_json: 'false'
           - name: Supernoba-disconnect-handler
             path: liquibook/lambda/Supernoba-disconnect-handler
+            has_package_json: 'false'
     
     steps:
       - name: Checkout code
@@ -48,8 +58,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: ${{ matrix.function.path }}/package.json
+          cache: ${{ matrix.function.has_package_json == 'true' && 'npm' || '' }}
+          cache-dependency-path: ${{ matrix.function.has_package_json == 'true' && format('{0}/package.json', matrix.function.path) || '' }}
+        continue-on-error: true
       
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -79,11 +90,13 @@ jobs:
           fi
       
       - name: Install dependencies
-        if: steps.filter.outputs.should_deploy == 'true'
+        if: steps.filter.outputs.should_deploy == 'true' && matrix.function.has_package_json == 'true'
         working-directory: ${{ matrix.function.path }}
         run: |
           if [ -f package.json ]; then
             npm ci
+          else
+            echo "⚠️ package.json not found, skipping dependency installation"
           fi
       
       - name: Build (if needed)
@@ -103,9 +116,12 @@ jobs:
             cd dist
             zip -r ../function.zip index.js
             cd ..
-          else
-            # 일반 Node.js Lambda
+          elif [ -f package.json ]; then
+            # 일반 Node.js Lambda (의존성 있음)
             zip -r function.zip index.mjs node_modules/ package.json -x "*.git*" "*.test.*" "*.spec.*"
+          else
+            # package.json 없는 경우 (의존성 없음)
+            zip -r function.zip index.mjs -x "*.git*" "*.test.*" "*.spec.*"
           fi
       
       - name: Deploy to Lambda
