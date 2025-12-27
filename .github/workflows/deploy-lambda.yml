@@ -53,6 +53,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 전체 히스토리 가져오기 (git diff를 위해 필요)
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
