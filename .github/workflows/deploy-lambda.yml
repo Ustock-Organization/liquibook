@@ -54,13 +54,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      - name: Setup Node.js
+      - name: Setup Node.js (with cache)
+        if: matrix.function.has_package_json == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: ${{ matrix.function.has_package_json == 'true' && 'npm' || '' }}
-          cache-dependency-path: ${{ matrix.function.has_package_json == 'true' && format('{0}/package.json', matrix.function.path) || '' }}
-        continue-on-error: true
+          cache: 'npm'
+          cache-dependency-path: '${{ matrix.function.path }}/package.json'
+      
+      - name: Setup Node.js (without cache)
+        if: matrix.function.has_package_json == 'false'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
       
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -71,13 +77,14 @@ jobs:
       
       - name: Filter changed functions
         id: filter
-        continue-on-error: true
         run: |
+          set -e
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             if [ -n "${{ github.event.inputs.function_name }}" ]; then
-              echo "should_deploy=false" >> $GITHUB_OUTPUT
               if [ "${{ github.event.inputs.function_name }}" == "${{ matrix.function.name }}" ]; then
                 echo "should_deploy=true" >> $GITHUB_OUTPUT
+              else
+                echo "should_deploy=false" >> $GITHUB_OUTPUT
               fi
             else
               echo "should_deploy=true" >> $GITHUB_OUTPUT
@@ -92,6 +99,7 @@ jobs:
               echo "should_deploy=false" >> $GITHUB_OUTPUT
             fi
           fi
+          echo "Filter result for ${{ matrix.function.name }}: should_deploy=$(cat $GITHUB_OUTPUT | grep should_deploy | cut -d'=' -f2)"
       
       - name: Install dependencies
         if: steps.filter.outputs.should_deploy == 'true' && matrix.function.has_package_json == 'true'
